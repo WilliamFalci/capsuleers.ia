@@ -1,0 +1,73 @@
+# Cross-platform packaging configuration (electron-builder).
+# NATIVE build per OS: the node-llama-cpp native module has per-platform binaries
+# (see @node-llama-cpp/*), so Windows must be built on Windows and Linux on Linux.
+#
+#   npm run pack        → unpacked folder (fast, for quick testing)
+#   npm run dist:linux  → AppImage
+#   npm run dist:win    → NSIS installer (.exe)
+appId: com.capsuleers.ia
+productName: Capsuleers.IA
+copyright: Copyright © 2026 William Peter Falci
+
+directories:
+  buildResources: build   # build/icon.png (Linux) and build/icon.ico (Windows)
+  output: dist
+
+# What goes into the package. We start from everything and exclude the heavy assets
+# (.gguf models and the RAG index: downloaded on-demand at runtime into userData, NOT
+# bundled) and the Python "data factory", which is not needed at runtime.
+files:
+  - "**/*"
+  - "!models/**"          # ~16 GB of .gguf → on-demand, never in the package
+  - "!data/**"            # RAG index → downloaded/versioned separately
+  - "!build/**"           # electron-builder picks up the build resources separately
+  - "!*.py"
+  - "!build-index.mjs"
+  - "!rag.mjs"
+  - "!**/*.md"
+  - "!**/.selected-model"
+  # Trimming node-llama-cpp: at runtime only the compiled binary is needed (.node
+  # + .so alongside it), not the C++ source nor the test vocabs (~157 MB).
+  - "!**/node_modules/node-llama-cpp/llama/llama.cpp/**"
+  - "!**/node_modules/node-llama-cpp/llama/localBuilds/**"
+  # Foreign architectures (x64 build): drop the ARM binaries.
+  - "!**/node_modules/@node-llama-cpp/*arm*/**"
+  # CUDA excluded from the "lite" build (~600 MB): Vulkan/Metal cover NVIDIA too.
+  # For a CUDA variant, remove this line and rebuild on that platform.
+  - "!**/node_modules/@node-llama-cpp/*cuda*/**"
+
+# The node-llama-cpp native binaries CANNOT live inside the asar: they must be
+# "unpacked" to disk, otherwise loading the .node fails.
+asarUnpack:
+  - "**/node_modules/node-llama-cpp/**"
+  - "**/node_modules/@node-llama-cpp/**"
+
+# Publishing to GitHub Releases (feeds electron-updater and the latest*.yml files).
+# Set owner/repo when the repo is online; for local builds use
+# `electron-builder ... --publish never`.
+publish:
+  provider: github
+  owner: WilliamFalci
+  repo: capsuleers.ia
+  releaseType: release
+
+linux:
+  target:
+    - AppImage
+  icon: build/icon.png
+  category: Game
+  synopsis: Assistente IA locale per EVE Online (RAG + GPU)
+
+win:
+  target:
+    - nsis
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false                          # show the installation wizard
+  allowToChangeInstallationDirectory: true
+  perMachine: false                        # install per-user (no UAC)
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+appImage:
+  artifactName: ${productName}-${version}.${ext}

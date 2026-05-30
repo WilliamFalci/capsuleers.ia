@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Capsuleers.IA</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0b0d;
+      --bg2: #101216;
+      --panel: #14171c;
+      --line: #23272f;
+      --orange: #ff7a18;
+      --orange-dim: #c85a10;
+      --text: #d7dade;
+      --muted: #7b8290;
+      --user: #1c130a;
+      --user-line: #ff7a18;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; height: 100vh; display: flex; flex-direction: column;
+      background: var(--bg);
+      background-image:
+        linear-gradient(rgba(255,122,24,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,122,24,.025) 1px, transparent 1px);
+      background-size: 28px 28px;
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    /* Industrial header = custom title bar (draggable) */
+    header {
+      display: flex; align-items: center; gap: .9rem;
+      padding: .55rem 0 .55rem 1.1rem;
+      background: linear-gradient(180deg, #16191f, #0e1014);
+      border-bottom: 2px solid var(--orange);
+      box-shadow: 0 2px 18px rgba(255,122,24,.12);
+      -webkit-app-region: drag; user-select: none;
+    }
+    .spacer { flex: 1; }
+    /* Header buttons (ghost, monochrome) */
+    .tag-btn {
+      -webkit-app-region: no-drag; cursor: pointer;
+      display: inline-flex; align-items: center; gap: .42rem;
+      padding: .34rem .72rem;
+      background: rgba(255,255,255,.025);
+      border: 1px solid var(--line); border-radius: 5px;
+      color: #aeb4bf;
+      font-family: ui-monospace, monospace; font-size: .72rem; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+      transition: background .14s, border-color .14s, color .14s;
+    }
+    .tag-btn:hover { background: rgba(255,122,24,.1); border-color: var(--orange); color: #fff; }
+    .tag-btn:disabled { opacity: .45; cursor: default; background: rgba(255,255,255,.02);
+                        border-color: var(--line); color: var(--muted); }
+    .tag-btn.active { background: rgba(255,122,24,.14); border-color: var(--orange); color: var(--orange); }
+    .tag-btn .ico { width: 14px; height: 14px; flex: 0 0 auto; stroke: currentColor; fill: none; }
+    .win-controls { display: flex; align-items: center; -webkit-app-region: no-drag; }
+    .wc {
+      width: 38px; height: 30px; flex: 0 0 38px;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      padding: 0; margin: 0; border: 0; background: transparent; cursor: pointer;
+      color: var(--muted); font-family: ui-monospace, monospace; font-size: .95rem; line-height: 1;
+    }
+    .wc:hover { background: #1d2128; color: var(--text); }
+    .wc.close:hover { background: var(--orange); color: #1a0d02; }
+
+    /* Mini-mode (always-on-top icon) */
+    #mini { display: none; }
+    body.mini header, body.mini #chat, body.mini footer { display: none; }
+    body.mini #mini {
+      display: flex; align-items: center; justify-content: center;
+      position: fixed; inset: 0; -webkit-app-region: drag;  /* drag to move */
+      background: var(--bg);
+    }
+    #mini img {
+      width: 66px; height: 66px; cursor: pointer; -webkit-app-region: no-drag;
+      filter: drop-shadow(0 0 7px rgba(255,122,24,.55)); transition: transform .12s;
+    }
+    #mini img:hover { transform: scale(1.1); }
+
+    /* Info page */
+    #about {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(5,6,8,.78); backdrop-filter: blur(3px);
+    }
+    #about[hidden] { display: none; }
+    .about-panel {
+      position: relative; width: min(560px, 88vw); padding: 1.8rem 1.8rem 1.6rem;
+      background: linear-gradient(180deg, #14171c, #0e1014);
+      border: 1px solid var(--orange); border-top: 3px solid var(--orange);
+      box-shadow: 0 0 40px rgba(255,122,24,.18); text-align: center;
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+    }
+    .about-close {
+      position: absolute; top: .6rem; right: .6rem; width: 34px; height: 34px;
+      background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 1rem;
+    }
+    .about-close:hover { color: var(--orange); }
+    .about-logo { width: 76px; height: 76px; filter: drop-shadow(0 0 8px rgba(255,122,24,.5)); }
+    .about-title { font-family: ui-monospace, monospace; font-weight: 800; letter-spacing: .16em;
+                   font-size: 1.25rem; margin-top: .6rem; }
+    .about-title b { color: var(--orange); }
+    .about-sub { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+    .about-powered { margin: .9rem 0 1.1rem; font-family: ui-monospace, monospace;
+                     font-size: .8rem; letter-spacing: .08em; color: var(--muted); }
+    .about-powered a { color: var(--orange); text-decoration: none; font-weight: 700; }
+    .about-powered a:hover { text-decoration: underline; }
+    .about-disc { text-align: left; font-size: .8rem; line-height: 1.5; color: #9aa1ad;
+                  border-top: 1px dashed var(--line); padding-top: .9rem; }
+    .about-disc p { margin: 0 0 .6rem; }
+    .about-disc b { color: #c9cfda; }
+    .logo {
+      font-family: "Segoe UI", monospace; font-weight: 800; letter-spacing: .14em;
+      text-transform: uppercase; font-size: 1.02rem; color: var(--text);
+    }
+    .logo b { color: var(--orange); }
+    .tag {
+      font-family: ui-monospace, monospace; font-size: .7rem; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--muted);
+      border: 1px solid var(--line); padding: .15rem .5rem; border-radius: 2px;
+    }
+    #status { display: flex; align-items: center; gap: .4rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange);
+           box-shadow: 0 0 8px var(--orange); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Chat */
+    #chat { flex: 1; overflow-y: auto; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
+    #chat::-webkit-scrollbar { width: 10px; }
+    #chat::-webkit-scrollbar-thumb { background: #2a2f38; border-radius: 0; }
+    .msg { max-width: 82%; padding: .8rem 1rem; line-height: 1.5; white-space: pre-wrap;
+           font-size: .95rem; position: relative; }
+    .user {
+      align-self: flex-end; background: var(--user);
+      border-right: 3px solid var(--user-line);
+      clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%);
+    }
+    .bot {
+      align-self: flex-start; background: var(--panel);
+      border-left: 3px solid var(--orange-dim); border-top: 1px solid var(--line);
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%);
+    }
+    .bot::before {
+      content: "▸ CAPSULEER.IA"; display: block;
+      font-family: ui-monospace, monospace; font-size: .62rem; letter-spacing: .18em;
+      color: var(--orange); margin-bottom: .45rem; opacity: .8;
+    }
+    /* Rendered Markdown */
+    .bot .md p { margin: 0 0 .6rem; }
+    .bot .md p:last-child { margin-bottom: 0; }
+    .bot .md strong { color: #ffb066; font-weight: 700; }
+    .bot .md em { color: #e6c9a8; font-style: italic; }
+    .bot .md h4 { margin: .6rem 0 .35rem; color: var(--orange); font-size: .95rem; letter-spacing: .02em; }
+    .bot .md ul, .bot .md ol { margin: .2rem 0 .6rem; padding-left: 1.3rem; }
+    .bot .md li { margin: .15rem 0; }
+    .bot .md code { font-family: ui-monospace, monospace; background: #0a0b0d;
+                    border: 1px solid var(--line); padding: 0 .3rem; border-radius: 2px; color: #ffc28a; }
+    .bot .md a { color: var(--orange); text-decoration: none; border-bottom: 1px dotted var(--orange-dim); }
+    .bot .md a:hover { border-bottom-style: solid; }
+
+    /* Kill card */
+    .kills { margin-top: .8rem; display: flex; flex-direction: column; gap: 5px; }
+    .kill {
+      display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
+      grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
+      padding: 5px 9px; background: #0f1318; border-left: 3px solid var(--orange-dim); font-size: .82rem;
+    }
+    .kill.loss { border-left-color: #c0392b; }
+    .kill:hover { background: #171c23; }
+    .kill img { width: 28px; height: 28px; border-radius: 2px; background: #0a0b0d; }
+    .kill img.victim { width: 24px; height: 24px; border-radius: 50%; }
+    .kill .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kill .nm.dim { color: var(--muted); font-weight: 400; }
+    .kill .sys { color: #9aa1ad; font-family: ui-monospace, monospace; }
+    .kill .val { color: var(--orange); white-space: nowrap; }
+    .kill .tm { color: var(--muted); font-family: ui-monospace, monospace; font-size: .72rem; white-space: nowrap; }
+    .sources {
+      margin-top: .7rem; padding-top: .5rem; border-top: 1px dashed var(--line);
+      font-family: ui-monospace, monospace; font-size: .72rem; color: var(--muted);
+    }
+    .sources b { color: var(--orange-dim); letter-spacing: .1em; }
+    .sources a { color: var(--orange); text-decoration: none; }
+    .sources a:hover { text-decoration: underline; }
+
+    /* Local Intel panel */
+    #local { position: fixed; inset: 0; z-index: 60; display: none;
+      background: rgba(5,6,8,.82); backdrop-filter: blur(3px); }
+    #local.show { display: flex; align-items: center; justify-content: center; }
+    .local-panel { position: relative; width: min(680px, 92vw); max-height: 86vh;
+      display: flex; flex-direction: column;
+      background: linear-gradient(180deg, #14171c, #0e1014);
+      border: 1px solid var(--orange); border-top: 3px solid var(--orange);
+      box-shadow: 0 0 40px rgba(255,122,24,.18);
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); }
+    .local-head { display: flex; align-items: center; gap: .7rem; padding: 1rem 1.2rem .6rem; }
+    .local-head h2 { margin: 0; font-family: ui-monospace, monospace; letter-spacing: .12em;
+      font-size: 1rem; color: var(--text); text-transform: uppercase; }
+    .local-head h2 b { color: var(--orange); }
+    .local-sub { color: var(--muted); font-size: .78rem; }
+    .local-close { position: absolute; top: .6rem; right: .6rem; width: 34px; height: 34px;
+      background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 1rem; }
+    .local-close:hover { color: var(--orange); }
+    .local-body { overflow-y: auto; padding: .4rem 1.2rem 1.2rem; }
+    .local-body::-webkit-scrollbar { width: 10px; }
+    .local-body::-webkit-scrollbar-thumb { background: #2a2f38; }
+    .lrow { display: grid; align-items: center; gap: .55rem;
+      grid-template-columns: 10px auto 26px minmax(110px,1fr) auto auto;
+      padding: 5px 8px; border-left: 3px solid #2a2f38; background: #0f1318;
+      margin-bottom: 4px; font-size: .84rem; text-decoration: none; color: var(--text); }
+    .lrow:hover { background: #171c23; }
+    .lrow.d3 { border-left-color: #c0392b; background: #1a0f10; }
+    .lrow.d2 { border-left-color: #f0a020; }
+    .lrow.d1 { border-left-color: #39b54a; }
+    .lrow.d0 { border-left-color: #3a7bd5; }
+    .lrow .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .lrow.d3 .dot { background: #c0392b; box-shadow: 0 0 6px #c0392b; }
+    .lrow.d2 .dot { background: #f0a020; }
+    .lrow.d1 .dot { background: #39b54a; }
+    .lrow.d0 .dot { background: #3a7bd5; }
+    /* Corp/alliance logos (square) + char portrait (round) */
+    .lrow .logos { display: flex; gap: 2px; }
+    .lrow .logos img { width: 16px; height: 16px; border-radius: 2px; background: #0a0b0d; }
+    .lrow .logos .ph { width: 16px; height: 16px; }
+    .lrow .portrait { width: 24px; height: 24px; border-radius: 50%; background: #0a0b0d; }
+    /* Name cell: alliance/corp ticker before the name */
+    .lname { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+    .lname .tk { font-family: ui-monospace, monospace; font-size: .68rem; white-space: nowrap; }
+    .lname .tk.alli { color: #7fb0ff; }
+    .lname .tk.corp { color: #9aa1ad; }
+    .lrow .lnm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lrow .lnm.miss { color: var(--muted); font-weight: 400; font-style: italic; }
+    .lrow .lkd { color: #9aa1ad; font-family: ui-monospace, monospace; font-size: .76rem; white-space: nowrap; }
+    .lrow .lflags { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+    .lflag { font-size: .66rem; padding: 1px 5px; border-radius: 2px; background: #1a1f27;
+      border: 1px solid #2a2f37; color: #c9cfda; white-space: nowrap; }
+    .lflag.hot { border-color: #c0392b; color: #ff9a8a; }
+    .local-prog { font-family: ui-monospace, monospace; font-size: .76rem; color: var(--muted);
+      padding: .2rem 0 .6rem; }
+    .local-bar { height: 3px; background: #1a1d22; border-radius: 2px; overflow: hidden; margin-top: 4px; }
+    .local-bar > i { display: block; height: 100%; width: 0; background: var(--orange); transition: width .2s; }
+
+    /* Pilot detail popup */
+    #pilot { position: fixed; inset: 0; z-index: 70; display: none;
+      background: rgba(5,6,8,.86); backdrop-filter: blur(3px); }
+    #pilot.show { display: flex; align-items: center; justify-content: center; }
+    .pilot-card { position: relative; width: min(420px, 92vw); max-height: 88vh; overflow-y: auto;
+      background: linear-gradient(180deg, #14171c, #0d0f12);
+      border: 1px solid var(--line); border-top: 3px solid var(--orange);
+      box-shadow: 0 0 44px rgba(0,0,0,.6); padding: 1.4rem 1.4rem 1.2rem; text-align: center; }
+    .pilot-card::-webkit-scrollbar { width: 8px; }
+    .pilot-card::-webkit-scrollbar-thumb { background: #2a2f38; }
+    .pilot-close { position: absolute; top: .5rem; right: .5rem; width: 32px; height: 32px;
+      background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 1rem; }
+    .pilot-close:hover { color: var(--orange); }
+    .pilot-portrait { width: 76px; height: 76px; border-radius: 50%; background: #0a0b0d;
+      border: 2px solid #2a2f38; }
+    .pilot-name { font-size: 1.15rem; font-weight: 700; margin-top: .5rem; }
+    .pilot-aff { color: var(--orange); font-size: .82rem; letter-spacing: .04em; margin-top: .15rem; }
+    .pilot-stats { display: flex; justify-content: center; gap: 2.2rem; margin: 1rem 0 .4rem; }
+    .pilot-stats .s { display: flex; flex-direction: column; }
+    .pilot-stats .s b { font-size: 1.05rem; }
+    .pilot-stats .s span { font-size: .64rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+    .pilot-stats .eff b { color: #39b54a; }
+    /* Playstyle bar solo/small/fleet */
+    .pbar-labels { display: flex; justify-content: space-between; font-family: ui-monospace, monospace;
+      font-size: .64rem; letter-spacing: .12em; margin: .6rem 0 .25rem; }
+    .pbar-labels .pl { padding: 2px 8px; border-radius: 2px; }
+    .pbar-labels .solo { color: #3a7bd5; } .pbar-labels .small { color: #39b54a; } .pbar-labels .fleet { color: #c0392b; }
+    .pbar-labels .on { color: #0a0b0d; font-weight: 700; }
+    .pbar-labels .solo.on { background: #3a7bd5; } .pbar-labels .small.on { background: #39b54a; } .pbar-labels .fleet.on { background: #c0392b; }
+    .pbar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #1a1d22; }
+    .pbar i { display: block; height: 100%; }
+    .pbar .b-solo { background: #3a7bd5; } .pbar .b-small { background: #39b54a; } .pbar .b-fleet { background: #c0392b; }
+    .pilot-sect { text-align: left; margin-top: 1.1rem; }
+    .pilot-sect h4 { font-family: ui-monospace, monospace; font-size: .66rem; letter-spacing: .16em;
+      color: var(--muted); text-transform: uppercase; margin: 0 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .3rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .chip { display: flex; align-items: center; gap: .35rem; background: #11151a; border: 1px solid #23272f;
+      border-radius: 4px; padding: 3px 8px; font-size: .76rem; text-decoration: none; color: var(--text); }
+    .chip:hover { border-color: var(--orange); }
+    .chip[data-pilot] { cursor: pointer; }  /* only characters are clickable (drill-down) */
+    .chip img { width: 22px; height: 22px; border-radius: 50%; background: #0a0b0d; }
+    .chip img.sq { border-radius: 3px; }
+    .chip .c-ct { color: var(--muted); font-size: .7rem; }
+    .pilot-tags { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; margin-top: .7rem; }
+    .pilot-tags .t { font-size: .68rem; padding: 2px 7px; border-radius: 3px; background: #1a1f27; border: 1px solid #2a2f37; }
+    .pilot-tags .t.hot { border-color: #c0392b; color: #ff9a8a; }
+    .pilot-link { display: inline-block; margin-top: 1rem; color: var(--orange); font-size: .78rem;
+      text-decoration: none; cursor: pointer; }
+    .pilot-link:hover { text-decoration: underline; }
+    .pilot-links { display: flex; gap: .6rem; margin-top: 1.1rem; }
+    .pilot-links .pilot-link {
+      flex: 1; margin-top: 0;
+      display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+      padding: .5rem .6rem;
+      background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 5px;
+      color: #aeb4bf; font-size: .74rem; font-weight: 600; letter-spacing: .04em;
+      text-decoration: none; transition: background .14s, border-color .14s, color .14s;
+    }
+    .pilot-links .pilot-link:hover { background: rgba(255,122,24,.1); border-color: var(--orange);
+                                     color: #fff; text-decoration: none; }
+    .pilot-links .pilot-link .ico { width: 15px; height: 15px; flex: 0 0 auto; stroke: currentColor; fill: none; }
+    .pilot-loading { color: var(--muted); font-size: .85rem; padding: 2rem 0; }
+
+    /* Input */
+    footer {
+      display: flex; gap: .6rem; padding: .8rem 1rem;
+      background: #0e1014; border-top: 1px solid var(--line);
+    }
+    textarea {
+      flex: 1; resize: none; padding: .7rem .9rem; font: inherit;
+      background: #0a0b0d; color: var(--text);
+      border: 1px solid var(--line); border-radius: 2px; outline: none;
+    }
+    textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange-dim); }
+    button {
+      padding: 0 1.6rem; border: 1px solid var(--orange); border-radius: 2px;
+      background: linear-gradient(180deg, var(--orange), var(--orange-dim));
+      color: #1a0d02; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      font-family: ui-monospace, monospace; font-size: .82rem; cursor: pointer;
+    }
+    button:disabled { background: #1a1d22; color: var(--muted); border-color: var(--line); cursor: default; }
+
+    /* AI model selection */
+    #models { position: fixed; inset: 0; z-index: 55; display: flex; align-items: center; justify-content: center;
+              background: rgba(5,6,8,.78); backdrop-filter: blur(3px); }
+    #models[hidden] { display: none; }
+    .models-panel {
+      position: relative; width: min(660px, 92vw); max-height: 86vh; overflow-y: auto;
+      padding: 1.5rem 1.5rem 1.3rem; background: linear-gradient(180deg, #14171c, #0e1014);
+      border: 1px solid var(--orange); border-top: 3px solid var(--orange);
+      box-shadow: 0 0 40px rgba(255,122,24,.18);
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+    }
+    .models-close { position: absolute; top: .6rem; right: .6rem; width: 34px; height: 34px;
+                    background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 1rem; }
+    .models-close:hover { color: var(--orange); }
+    .models-head h2 { font-family: ui-monospace, monospace; letter-spacing: .14em; font-size: 1.05rem; margin: 0; }
+    .models-head h2 b { color: var(--orange); }
+    .models-vram { font-family: ui-monospace, monospace; font-size: .76rem; color: var(--muted); margin: .35rem 0 .2rem; }
+    .vram-bar { height: 7px; background: #0a0b0d; border: 1px solid var(--line); margin: .3rem 0 1rem; }
+    .vram-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--orange-dim), var(--orange)); }
+    .models-hint { font-size: .76rem; color: var(--muted); line-height: 1.45; margin: 0 0 1rem;
+                   border-left: 2px solid var(--orange-dim); padding-left: .7rem; }
+    .mrow {
+      display: grid; grid-template-columns: 1fr auto; gap: .2rem 1rem; align-items: center;
+      padding: .7rem .8rem; margin-bottom: .55rem; cursor: pointer;
+      background: #0e1014; border: 1px solid var(--line); border-left: 3px solid var(--line);
+    }
+    .mrow:hover { border-color: var(--orange-dim); border-left-color: var(--orange); background: #12151a; }
+    .mrow.current { border-left-color: var(--orange); background: #15110b; }
+    .mrow.busy { opacity: .5; pointer-events: none; }
+    .mrow .mname { font-weight: 700; font-size: .92rem; }
+    .mrow .mname b { color: var(--orange); }
+    .mrow .mmeta { grid-column: 1; font-family: ui-monospace, monospace; font-size: .74rem; color: var(--muted); }
+    .mrow .meta-warn { color: #d98a3a; }
+    .mrow .mest { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-family: ui-monospace, monospace; }
+    .mrow .meta-eta { font-size: 1.02rem; font-weight: 700; color: var(--text); }
+    .mrow .meta-tps { font-size: .72rem; color: var(--muted); }
+    .badge { display: inline-block; font-family: ui-monospace, monospace; font-size: .66rem; letter-spacing: .08em;
+             text-transform: uppercase; padding: .12rem .4rem; border-radius: 2px; margin-left: .5rem; vertical-align: middle; }
+    .badge.veloce { background: #10300f; color: #6fd96b; border: 1px solid #2c6b29; }
+    .badge.accettabile { background: #33280a; color: #e0b352; border: 1px solid #6b5417; }
+    .badge.lento { background: #331010; color: #e06b6b; border: 1px solid #6b2424; }
+    .badge.now { background: var(--orange); color: #1a0d02; border: 1px solid var(--orange); }
+
+    /* First-run setup (on-demand asset download) */
+    #setup { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
+             background: rgba(5,6,8,.92); backdrop-filter: blur(4px); }
+    #setup[hidden] { display: none; }
+    .setup-panel { position: relative; width: min(640px, 92vw); max-height: 88vh; overflow-y: auto;
+      padding: 1.6rem; background: linear-gradient(180deg, #14171c, #0e1014);
+      border: 1px solid var(--orange); border-top: 3px solid var(--orange);
+      box-shadow: 0 0 40px rgba(255,122,24,.18);
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); }
+    .setup-panel h2 { font-family: ui-monospace, monospace; letter-spacing: .14em; font-size: 1.1rem; margin: 0 0 .6rem; }
+    .setup-panel h2 b { color: var(--orange); }
+    .setup-intro { font-size: .82rem; color: var(--text); line-height: 1.5; margin: 0 0 1rem; }
+    .srow { display: grid; grid-template-columns: auto 1fr auto; gap: .15rem .8rem; align-items: center;
+      padding: .65rem .8rem; margin-bottom: .5rem; cursor: pointer;
+      background: #0e1014; border: 1px solid var(--line); border-left: 3px solid var(--line); }
+    .srow:hover { border-color: var(--orange-dim); border-left-color: var(--orange); background: #12151a; }
+    .srow.sel { border-left-color: var(--orange); background: #15110b; }
+    .srow input { accent-color: var(--orange); }
+    .srow .sname { font-weight: 700; font-size: .9rem; }
+    .srow .ssize { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--text); text-align: right; white-space: nowrap; }
+    .srow .sinstalled { color: #6fd96b; }
+    .srow .sreco { grid-column: 2 / span 2; font-family: ui-monospace, monospace; font-size: .72rem; color: var(--muted); }
+    .setup-incl { font-family: ui-monospace, monospace; font-size: .74rem; color: var(--muted);
+      border-left: 2px solid var(--orange-dim); padding-left: .7rem; margin: .2rem 0 .2rem; }
+    .setup-total { font-family: ui-monospace, monospace; font-size: .92rem; margin: .9rem 0 .2rem; }
+    .setup-total b { color: var(--orange); }
+    .setup-resume { font-size: .72rem; color: var(--muted); margin-top: .5rem; }
+    .setup-actions { display: flex; gap: .7rem; margin-top: 1rem; }
+    .setup-btn { flex: 1; padding: .7rem 1rem; font-family: ui-monospace, monospace; font-size: .82rem; letter-spacing: .06em;
+      text-transform: uppercase; cursor: pointer; background: var(--orange); color: #1a0d02; border: 1px solid var(--orange); }
+    .setup-btn:hover { background: #ff8c33; }
+    .setup-btn[disabled] { opacity: .5; cursor: default; }
+    .setup-btn.ghost { background: transparent; color: var(--muted); border-color: var(--line); }
+    .setup-btn.ghost:hover { color: var(--orange); border-color: var(--orange-dim); }
+    .setup-prog { margin-top: 1rem; }
+    .setup-bar { height: 10px; background: #0a0b0d; border: 1px solid var(--line); margin: .4rem 0; }
+    .setup-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--orange-dim), var(--orange)); transition: width .2s; }
+    .setup-stat { font-family: ui-monospace, monospace; font-size: .74rem; color: var(--muted); display: flex; justify-content: space-between; gap: 1rem; }
+    .setup-err { color: #e06b6b; font-size: .8rem; margin-top: .7rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo">CAPSULEERS<b>.IA</b></span>
+    <span class="tag">EVE ONLINE · LOCAL AI</span>
+    <span id="status" class="tag"><span class="dot"></span><span id="status-text">boot…</span></span>
+    <button id="new-chat" class="tag-btn" data-i18n-title="btnNewTitle">
+      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      <span data-i18n="btnNew">Nuova</span>
+    </button>
+    <button id="local-btn" class="tag-btn" data-i18n-title="btnLocalTitle">
+      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg>
+      <span data-i18n="btnLocal">Local</span>
+    </button>
+    <button id="model-btn" class="tag-btn" data-i18n-title="btnModelTitle" disabled>
+      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+      <span data-i18n="btnModel">Modello</span>
+    </button>
+    <span class="spacer"></span>
+    <div class="win-controls">
+      <button class="wc" id="wc-info" data-i18n-title="wcInfo">&#x24D8;</button>
+      <button class="wc" id="wc-mini" data-i18n-title="wcMini">&#x25CE;</button>
+      <button class="wc" id="wc-tray" data-i18n-title="wcTray">&#x2013;</button>
+      <button class="wc" id="wc-max" data-i18n-title="wcMax">&#x25A1;</button>
+      <button class="wc close" id="wc-close" data-i18n-title="wcClose">&#x2715;</button>
+    </div>
+  </header>
+
+  <!-- Mini-mode: always-on-top icon; click to expand -->
+  <div id="mini">
+    <img src="../../assets/icon-256.png" alt="Capsuleers.IA" data-i18n-title="miniExpand" />
+  </div>
+
+  <!-- Info page -->
+  <div id="about" hidden>
+    <div class="about-panel">
+      <button class="about-close" id="about-close" data-i18n-title="wcClose">&#x2715;</button>
+      <img class="about-logo" src="../../assets/icon-256.png" alt="" />
+      <div class="about-title">CAPSULEERS<b>.IA</b></div>
+      <div class="about-sub" data-i18n="aboutSub">Assistente locale per EVE Online</div>
+      <div class="about-powered">
+        <span data-i18n="aboutPowered">powered by</span> <a href="https://capsuleers.app" target="_blank" rel="noopener">capsuleers.app</a>
+      </div>
+      <div class="about-disc">
+        <p data-i18n-html="aboutDisc1"><b>Strumento non ufficiale</b> creato da fan, non affiliato né approvato da Fenris Creations.</p>
+        <p data-i18n="aboutDisc2">EVE Online e il logo EVE sono marchi registrati di Fenris Creations. Tutti i diritti riservati.
+        Tutti i nomi di prodotti, loghi e marchi citati appartengono ai rispettivi proprietari.
+        Fenris Creations non è in alcun modo responsabile del contenuto o del funzionamento di questa
+        applicazione, né può essere ritenuta responsabile per eventuali danni derivanti dal suo utilizzo.</p>
+        <p data-i18n-html="aboutDisc3">Dati: EVE Static Data Export (Fenris Creations) ed EVE University Wiki (CC-BY-SA). Le risposte sono
+        generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.</p>
+      </div>
+    </div>
+  </div>
+  <!-- AI model selection -->
+  <div id="models" hidden>
+    <div class="models-panel">
+      <button class="models-close" id="models-close" data-i18n-title="wcClose">&#x2715;</button>
+      <div class="models-head">
+        <h2 data-i18n-html="modelsTitle">MODELLO <b>IA</b></h2>
+        <div class="models-vram" id="models-vram">VRAM: …</div>
+        <div class="vram-bar"><i id="vram-fill" style="width:0%"></i></div>
+        <p class="models-hint" data-i18n-html="modelsHint">Stima sulla VRAM <b>libera ora</b>: più layer entrano in GPU, più la risposta è veloce.
+          Chiudere altre app che usano la GPU (browser, Steam…) libera VRAM e accelera i modelli più grandi.
+          I tempi sono indicativi per una risposta tipica.<br>
+          Il modello che scegli diventa il <b>predefinito</b> e verrà riusato a ogni riavvio dell'app.</p>
+      </div>
+      <div id="models-list"></div>
+    </div>
+  </div>
+
+  <!-- First-run setup: on-demand download of AI model + EVE index -->
+  <div id="setup" hidden>
+    <div class="setup-panel">
+      <h2 data-i18n-html="setupTitle">PRIMO <b>AVVIO</b></h2>
+      <p class="setup-intro" data-i18n="setupIntro">Scarica una volta il modello e l'indice.</p>
+      <div id="setup-models"></div>
+      <div class="setup-incl" id="setup-incl"></div>
+      <div class="setup-total" id="setup-total"></div>
+      <div class="setup-resume" data-i18n="setupResume">Il download riprende da dove era rimasto.</div>
+      <div class="setup-actions" id="setup-actions">
+        <button class="setup-btn" id="setup-start" data-i18n="setupStart">Scarica e avvia</button>
+      </div>
+      <div class="setup-prog" id="setup-prog" hidden>
+        <div class="setup-bar"><i id="setup-fill"></i></div>
+        <div class="setup-stat"><span id="setup-label"></span><span id="setup-pct"></span></div>
+        <div class="setup-actions">
+          <button class="setup-btn ghost" id="setup-cancel" data-i18n="setupCancel">Annulla</button>
+        </div>
+      </div>
+      <div class="setup-err" id="setup-err" hidden></div>
+    </div>
+  </div>
+
+  <!-- Local Intel panel -->
+  <div id="local">
+    <div class="local-panel">
+      <button class="local-close" id="local-close" data-i18n-title="wcClose">&#x2715;</button>
+      <div class="local-head">
+        <h2 data-i18n-html="localTitle">INTEL <b>LOCAL</b></h2>
+        <span class="local-sub" id="local-sub"></span>
+      </div>
+      <div class="local-body" id="local-body"></div>
+    </div>
+  </div>
+
+  <!-- Pilot detail popup -->
+  <div id="pilot">
+    <div class="pilot-card" id="pilot-card"></div>
+  </div>
+
+  <div id="chat"></div>
+  <footer>
+    <textarea id="q" rows="2" data-i18n-ph="inputPlaceholder" disabled></textarea>
+    <button id="send" data-i18n="btnSend" disabled>Invia</button>
+  </footer>
+
+  <script>
+    // Custom window controls
+    document.getElementById("wc-mini").addEventListener("click", () => capsuleers.win.mini());
+    document.getElementById("wc-tray").addEventListener("click", () => capsuleers.win.minimize());
+    document.getElementById("wc-max").addEventListener("click", () => capsuleers.win.maximize());
+    document.getElementById("wc-close").addEventListener("click", () => capsuleers.win.close());
+    capsuleers.win.onState((max) => { document.getElementById("wc-max").innerHTML = max ? "&#x2750;" : "&#x25A1;"; });
+    // Mini-mode: click the icon to return to the interface
+    document.querySelector("#mini img").addEventListener("click", () => capsuleers.win.restore());
+    capsuleers.win.onMiniState((mini) => document.body.classList.toggle("mini", mini));
+
+    // New conversation (resets history + chat)
+    document.getElementById("new-chat").addEventListener("click", () => {
+      capsuleers.reset();
+      document.getElementById("chat").innerHTML = "";
+      showWelcome();
+    });
+
+    // Info page
+    const about = document.getElementById("about");
+    document.getElementById("wc-info").addEventListener("click", () => about.hidden = false);
+    document.getElementById("about-close").addEventListener("click", () => about.hidden = true);
+    about.addEventListener("click", (e) => { if (e.target === about) about.hidden = true; });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") about.hidden = true; });
+
+    // --- Local Intel from clipboard ---
+    const localPanel = document.getElementById("local");
+    const localBody = document.getElementById("local-body");
+    const localSub = document.getElementById("local-sub");
+    function openLocal() { localPanel.classList.add("show"); }
+    function closeLocal() { localPanel.classList.remove("show"); }
+    document.getElementById("local-close").addEventListener("click", closeLocal);
+    localPanel.addEventListener("click", (e) => { if (e.target === localPanel) closeLocal(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLocal(); });
+
+    // Click on the header button: toggles clipboard watching and opens the panel.
+    const localBtn = document.getElementById("local-btn");
+    async function refreshLocalBtn() {
+      const on = await capsuleers.local.state();
+      localBtn.classList.toggle("active", on);
+      localBtn.title = on ? L.localOn : L.localOff;
+    }
+    localBtn.addEventListener("click", async () => { await capsuleers.local.toggle(); refreshLocalBtn(); });
+    refreshLocalBtn();
+
+    const HOT_FLAGS = /^(capital|FC:|bait)/;
+    function localRow(r) {
+      const a = document.createElement("div");
+      a.className = "lrow d" + (r.danger || 0);
+      if (r.id) {
+        a.style.cursor = "pointer";
+        a.title = L.intelDetail;
+        a.addEventListener("click", () => openPilot({ id: r.id, name: r.name }));
+      }
+      // Alliance + corp logos (square). Placeholder when missing, to keep alignment.
+      const alliLogo = r.allianceId
+        ? `<img class="alli" src="${IMG}/alliances/${r.allianceId}/logo?size=32" alt="" title="${esc(r.allianceName||"")}" />`
+        : `<span class="ph"></span>`;
+      const corpLogo = r.corpId
+        ? `<img class="corp" src="${IMG}/corporations/${r.corpId}/logo?size=32" alt="" title="${esc(r.corpName||"")}" />`
+        : `<span class="ph"></span>`;
+      const portrait = r.id ? `<img class="portrait" src="${IMG}/characters/${r.id}/portrait?size=32" alt="" />` : "";
+      // Ticker before the name: <ALLI> [CORP] Name (EVE convention).
+      const alliTk = r.allianceTicker ? `<span class="tk alli">&lt;${esc(r.allianceTicker)}&gt;</span>` : "";
+      const corpTk = r.corpTicker ? `<span class="tk corp">[${esc(r.corpTicker)}]</span>` : "";
+      const kd = r.found
+        ? `${L.killAbbr} ${r.kills ?? 0} / ${L.lossAbbr} ${r.losses ?? 0}${r.eff != null ? " · " + r.eff + "%" : ""}`
+        : L.notFound;
+      const flags = (r.flags || []).map((f) =>
+        `<span class="lflag${HOT_FLAGS.test(f) ? " hot" : ""}">${esc(f)}</span>`).join("");
+      a.innerHTML =
+        `<span class="dot" title="${esc(L.danger[r.danger||0])}"></span>` +
+        `<span class="logos">${alliLogo}${corpLogo}</span>` +
+        (r.id ? portrait : `<span></span>`) +
+        `<span class="lname">${alliTk}${corpTk}<span class="lnm${r.found ? "" : " miss"}">${esc(r.name)}</span></span>` +
+        `<span class="lkd">${esc(kd)}</span>` +
+        `<span class="lflags">${flags}</span>`;
+      return a;
+    }
+
+    capsuleers.local.onStart(({ total }) => {
+      openLocal();
+      localSub.textContent = L.localResolving(total);
+      localBody.innerHTML = `<div class="local-prog">${L.loadingIntel} <span id="lp">0</span>/${total}` +
+        `<div class="local-bar"><i id="lpbar"></i></div></div>`;
+    });
+    capsuleers.local.onProgress(({ done, total }) => {
+      const lp = document.getElementById("lp"), bar = document.getElementById("lpbar");
+      if (lp) lp.textContent = done;
+      if (bar) bar.style.width = Math.round((done / total) * 100) + "%";
+    });
+    capsuleers.local.onResult((res) => {
+      openLocal();
+      if (res.error) { localBody.innerHTML = `<div class="local-prog">⚠ ${esc(res.error)}</div>`; return; }
+      const danger = res.rows.filter((r) => r.danger >= 2).length;
+      localSub.textContent = L.pilotsCount(res.rows.length) +
+        (res.capped ? L.resolvedOf(res.resolved, res.total) : "") +
+        (danger ? L.dangerousCount(danger) : "");
+      localBody.innerHTML = "";
+      for (const r of res.rows) localBody.appendChild(localRow(r));
+    });
+
+    // --- Pilot detail popup ---
+    const pilotOv = document.getElementById("pilot");
+    const pilotCard = document.getElementById("pilot-card");
+    function closePilot() { pilotOv.classList.remove("show"); }
+    pilotOv.addEventListener("click", (e) => { if (e.target === pilotOv) closePilot(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePilot(); });
+
+    const DANGER_COL = ["#3a7bd5", "#39b54a", "#f0a020", "#c0392b"];
+    async function openPilot(who) {
+      pilotOv.classList.add("show");
+      pilotCard.innerHTML = `<button class="pilot-close">&#x2715;</button>` +
+        `<div class="pilot-loading">${esc(L.loadingIntelOf(who.name || ""))}</div>`;
+      pilotCard.querySelector(".pilot-close").addEventListener("click", closePilot);
+      let d;
+      try { d = await capsuleers.local.detail(who); } catch (e) { d = { error: e.message }; }
+      if (!d || d.error) {
+        pilotCard.innerHTML = `<button class="pilot-close">&#x2715;</button>` +
+          `<div class="pilot-loading">⚠ ${esc(d?.error || L.noData)}</div>`;
+        pilotCard.querySelector(".pilot-close").addEventListener("click", closePilot);
+        return;
+      }
+      renderPilot(d);
+    }
+
+    function renderPilot(d) {
+      const aff = [d.allianceName, d.corpName].filter(Boolean).join(" | ");
+      const p = d.play || {}; const tot = Math.max(1, (p.solo||0)+(p.small||0)+(p.fleet||0));
+      const pct = (v) => Math.round((v / tot) * 100);
+      const dom = (d.dominant || "").toLowerCase();
+      const isSolo = dom.includes("solo"), isFleet = dom.includes("fleet") || dom.includes("blob");
+      const isSmall = !isSolo && !isFleet;
+      const partners = (d.partners || []).map((x) =>
+        `<a class="chip" data-pilot="${x.id}" data-name="${esc(x.name)}">` +
+        `<img src="${IMG}/characters/${x.id}/portrait?size=32" alt="" />` +
+        `<span>${esc(x.name)}</span><span class="c-ct">(${x.count})</span></a>`).join("");
+      const ships = (d.ships || []).map((s) =>
+        `<span class="chip"><img class="sq" src="${IMG}/types/${s.id}/icon?size=32" alt="" />` +
+        `<span>${esc(s.name)}</span><span class="c-ct">(${s.count})</span></span>`).join("");
+      const tags = [];
+      if (d.capital_pilot) tags.push(`<span class="t hot">capital</span>`);
+      if (d.is_logi) tags.push(`<span class="t">logi</span>`);
+      if (d.fc) tags.push(`<span class="t hot">FC: ${esc(d.fc)}</span>`);
+      if (d.bait) tags.push(`<span class="t hot">bait: ${esc(d.bait)}</span>`);
+
+      pilotCard.innerHTML =
+        `<button class="pilot-close">&#x2715;</button>` +
+        `<img class="pilot-portrait" src="${IMG}/characters/${d.id}/portrait?size=128" alt="" />` +
+        `<div class="pilot-name">${esc(d.name)}</div>` +
+        (aff ? `<div class="pilot-aff">${esc(aff)}</div>` : "") +
+        `<div class="pilot-stats">` +
+          `<div class="s"><b>${d.kills ?? "?"}</b><span>${L.statKills}</span></div>` +
+          `<div class="s"><b>${d.losses ?? "?"}</b><span>${L.statLoss}</span></div>` +
+          `<div class="s eff"><b>${d.eff != null ? d.eff + "%" : "?"}</b><span>${L.statEff}</span></div>` +
+        `</div>` +
+        (tags.length ? `<div class="pilot-tags">${tags.join("")}</div>` : "") +
+        `<div class="pbar-labels">` +
+          `<span class="pl solo${isSolo?" on":""}">SOLO ${pct(p.solo)}%</span>` +
+          `<span class="pl small${isSmall?" on":""}">SMALL ${pct(p.small)}%</span>` +
+          `<span class="pl fleet${isFleet?" on":""}">FLEET ${pct(p.fleet)}%</span>` +
+        `</div>` +
+        `<div class="pbar">` +
+          `<i class="b-solo" style="width:${pct(p.solo)}%"></i>` +
+          `<i class="b-small" style="width:${pct(p.small)}%"></i>` +
+          `<i class="b-fleet" style="width:${pct(p.fleet)}%"></i>` +
+        `</div>` +
+        (partners ? `<div class="pilot-sect"><h4>${L.fliesWith}</h4><div class="chips">${partners}</div></div>` : "") +
+        (ships ? `<div class="pilot-sect"><h4>${L.recentShips}</h4><div class="chips">${ships}</div></div>` : "") +
+        `<div class="pilot-links">` +
+          `<a class="pilot-link" title="${L.titleOverview}" data-url="https://capsuleers.app/${SYS_LANG}/character/${d.id}">` +
+            `<svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>` +
+            `<span>${L.lblOverview}</span></a>` +
+          `<a class="pilot-link" title="${L.titlePvp}" data-url="https://eve-kill.com/character/${d.id}">` +
+            `<svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2.4"/></svg>` +
+            `<span>${L.lblPvp}</span></a>` +
+        `</div>`;
+
+      pilotCard.querySelector(".pilot-close").addEventListener("click", closePilot);
+      // Opens external links in the system browser (overview on capsuleers.app, PvP on eve-kill.com).
+      for (const a of pilotCard.querySelectorAll(".pilot-link")) {
+        a.addEventListener("click", (e) => { e.preventDefault(); window.open(a.dataset.url, "_blank"); });
+      }
+      // Click on a partner → opens their detail (drill-down).
+      for (const c of pilotCard.querySelectorAll(".chip[data-pilot]")) {
+        c.addEventListener("click", () => openPilot({ id: Number(c.dataset.pilot), name: c.dataset.name }));
+      }
+    }
+
+    const chat = document.getElementById("chat");
+    const statusText = document.getElementById("status-text");
+    const q = document.getElementById("q");
+    const send = document.getElementById("send");
+
+    // --- Markdown → HTML (minimal: bold, italic, code, lists, headings) ---
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inline = (s) => s
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(?<![*])\*([^*\n]+)\*(?![*])/g, "<em>$1</em>");
+    function mdToHtml(md) {
+      const lines = esc(md).split("\n");
+      let html = "", list = null;
+      const close = () => { if (list) { html += `</${list}>`; list = null; } };
+      for (const raw of lines) {
+        const line = raw.replace(/\s+$/, "");
+        let m;
+        if (m = line.match(/^\s*#{1,6}\s+(.*)/)) { close(); html += `<h4>${inline(m[1])}</h4>`; }
+        else if (m = line.match(/^\s*[-*]\s+(.*)/)) { if (list !== "ul") { close(); html += "<ul>"; list = "ul"; } html += `<li>${inline(m[1])}</li>`; }
+        else if (m = line.match(/^\s*\d+\.\s+(.*)/)) { if (list !== "ol") { close(); html += "<ol>"; list = "ol"; } html += `<li>${inline(m[1])}</li>`; }
+        else if (line.trim() === "") { close(); }
+        else { close(); html += `<p>${inline(line)}</p>`; }
+      }
+      close();
+      return html;
+    }
+
+    // --- Kill card ---
+    const IMG = "https://images.evetech.net";
+    function fmtIsk(n) {
+      if (n == null) return "?";
+      if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+      if (n >= 1e3) return (n / 1e3).toFixed(0) + "k";
+      return String(Math.round(n));
+    }
+    function fmtEve(iso) {
+      const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : "";
+    }
+    function renderKills(kills) {
+      const wrap = document.createElement("div");
+      wrap.className = "kills";
+      for (const k of kills) {
+        const a = document.createElement("a");
+        a.className = "kill" + (k.kind === "losses" ? " loss" : "");
+        a.href = `https://eve-kill.com/kill/${k.killmailId}`;
+        a.title = L.openKillmail;
+        const vimg = k.isCharacter
+          ? `${IMG}/characters/${k.victimId}/portrait?size=32`
+          : `${IMG}/corporations/${k.victimId}/logo?size=32`;
+        a.innerHTML =
+          `<img src="${IMG}/types/${k.shipId}/render?size=32" alt="" />` +
+          `<span class="nm">${esc(k.shipName)}</span>` +
+          `<img class="victim" src="${vimg}" alt="" />` +
+          `<span class="nm dim">${esc(k.victimName)}</span>` +
+          `<span class="sys">${esc(k.system)}</span>` +
+          `<span class="val">${fmtIsk(k.value)} ISK</span>` +
+          `<span class="tm">${fmtEve(k.time)} EVE</span>`;
+        wrap.appendChild(a);
+      }
+      return wrap;
+    }
+
+    function bubble(cls) {
+      const d = document.createElement("div");
+      d.className = "msg " + cls;
+      chat.appendChild(d);
+      chat.scrollTop = chat.scrollHeight;
+      return d;
+    }
+
+    // AI welcome message: introduction + what it can do + commands.
+    // Localized to the system language: Italian if the locale is it-*, otherwise English.
+    const WELCOME = {
+      it: [
+        "## Benvenuto in Capsuleers.IA",
+        "Sono il tuo assistente locale esperto di **EVE Online**: giro interamente sul tuo computer (nessun dato lascia la macchina) e rispondo nella tua lingua, italiano o inglese.",
+        "",
+        "**Cosa puoi chiedermi**",
+        "- **Gioco**: skill, fitting, navi e moduli, missioni PVE, wormhole, sovereignty, anomalie, esplorazione, incursioni, planetary interaction, factional warfare…",
+        "- **Prezzi**: *\"quanto costa un Caracal?\"*, *\"prezzo del Damage Control II\"*",
+        "- **Analisi fit**: incolla un fit in formato **EFT** → te lo analizzo (validazione skill All V) e ti stimo il costo",
+        "",
+        "**Dati live (richiedono internet)**",
+        "- **Intel piloti**: *\"chi è <nome pilota / corp / alleanza>?\"* → killboard e statistiche PvP",
+        "- **Leadership**: *\"chi è il CEO di <corp>?\"*, in che corp/alleanza milita un personaggio",
+        "- **Sistemi attivi**: *\"dove si combatte adesso?\"*, attività per regione (dati ufficiali ESI)",
+        "- **Wormhole Thera/Turnur**: *\"collegamento Thera più vicino a Jita\"* (EVE-Scout)",
+        "",
+        "**I comandi in alto a sinistra**",
+        "- **Nuova** — azzera la conversazione e ne inizia una pulita",
+        "- **Local** — intel della Local: copia la lista piloti da EVE (Ctrl+A, Ctrl+C) e ti mostro chi hai intorno",
+        "- **Modello** — scegli il modello IA con la stima del tempo di risposta in base alla VRAM libera",
+        "",
+        "Le risposte sono generate da un'IA locale e **possono contenere errori: verifica sempre in gioco**. Scrivi pure la tua domanda qui sotto.",
+      ].join("\n"),
+      en: [
+        "## Welcome to Capsuleers.IA",
+        "I'm your local expert assistant for **EVE Online**: I run entirely on your computer (no data leaves the machine) and I reply in your language, English or Italian.",
+        "",
+        "**What you can ask me**",
+        "- **Gameplay**: skills, fitting, ships and modules, PVE missions, wormholes, sovereignty, anomalies, exploration, incursions, planetary interaction, factional warfare…",
+        "- **Prices**: *\"how much is a Caracal?\"*, *\"price of Damage Control II\"*",
+        "- **Fit analysis**: paste a fit in **EFT** format → I'll analyze it (All V skills check) and estimate its cost",
+        "",
+        "**Live data (requires internet)**",
+        "- **Pilot intel**: *\"who is <pilot / corp / alliance name>?\"* → killboard and PvP stats",
+        "- **Leadership**: *\"who is the CEO of <corp>?\"*, which corp/alliance a character belongs to",
+        "- **Active systems**: *\"where's the fighting right now?\"*, activity by region (official ESI data)",
+        "- **Thera/Turnur wormholes**: *\"closest Thera connection to Jita\"* (EVE-Scout)",
+        "",
+        "**The buttons in the top left**",
+        "- **New** — clears the conversation and starts a fresh one",
+        "- **Local** — Local intel: copy the pilot list from EVE (Ctrl+A, Ctrl+C) and I'll show you who's around",
+        "- **Model** — choose the AI model with response-time estimates based on free VRAM",
+        "",
+        "Answers are generated by a local AI and **may contain errors: always verify in-game**. Go ahead and type your question below.",
+      ].join("\n"),
+    };
+    // System language (Electron reflects the system locale in navigator.language).
+    const SYS_LANG = (navigator.language || "en").toLowerCase().startsWith("it") ? "it" : "en";
+
+    // Dictionary of all GUI strings. Entries can be functions
+    // when dynamic values are needed (counts, names…).
+    const I18N = {
+      it: {
+        btnNew: "Nuova", btnNewTitle: "Nuova conversazione",
+        btnLocal: "Local", btnLocalTitle: "Intel Local da appunti (copia la Local da EVE)",
+        btnModel: "Modello", btnModelTitle: "Scegli il modello IA (con stima del tempo di risposta)",
+        wcInfo: "Informazioni", wcMini: "Riduci a icona (always-on-top)", wcTray: "Riduci nel tray",
+        wcMax: "Massimizza", wcClose: "Chiudi", miniExpand: "Click per espandere",
+        aboutSub: "Assistente locale per EVE Online", aboutPowered: "powered by",
+        aboutDisc1: "<b>Strumento non ufficiale</b> creato da fan, non affiliato né approvato da Fenris Creations.",
+        aboutDisc2: "EVE Online e il logo EVE sono marchi registrati di Fenris Creations. Tutti i diritti riservati. Tutti i nomi di prodotti, loghi e marchi citati appartengono ai rispettivi proprietari. Fenris Creations non è in alcun modo responsabile del contenuto o del funzionamento di questa applicazione, né può essere ritenuta responsabile per eventuali danni derivanti dal suo utilizzo.",
+        aboutDisc3: "Dati: EVE Static Data Export (Fenris Creations) ed EVE University Wiki (CC-BY-SA). Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.",
+        modelsTitle: "MODELLO <b>IA</b>",
+        modelsHint: "Stima sulla VRAM <b>libera ora</b>: più layer entrano in GPU, più la risposta è veloce. Chiudere altre app che usano la GPU (browser, Steam…) libera VRAM e accelera i modelli più grandi. I tempi sono indicativi per una risposta tipica.<br>Il modello che scegli diventa il <b>predefinito</b> e verrà riusato a ogni riavvio dell'app.",
+        localTitle: "INTEL <b>LOCAL</b>",
+        inputPlaceholder: "// interroga: skill, fitting, wormhole, sovereignty, missioni…",
+        btnSend: "Invia",
+        localOn: "Ascolto appunti ATTIVO — copia la Local da EVE. Click per disattivare.",
+        localOff: "Intel Local da appunti (spento) — click per attivare",
+        danger: ["sconosciuto", "basso", "medio", "alto"],
+        intelDetail: "Dettaglio intel", notFound: "non trovato",
+        killAbbr: "K", lossAbbr: "P",
+        localResolving: (n) => `risoluzione di ${n} piloti…`,
+        loadingIntel: "Carico l'intel…",
+        pilotsCount: (n) => `${n} piloti`,
+        resolvedOf: (r, t) => ` (risolti ${r}/${t})`,
+        dangerousCount: (n) => ` · ${n} pericolosi`,
+        loadingIntelOf: (name) => `Carico l'intel di ${name}…`,
+        noData: "Nessun dato",
+        statKills: "kills", statLoss: "loss", statEff: "eff",
+        fliesWith: "Vola spesso con", recentShips: "Ultime navi usate",
+        openKillmail: "Apri il killmail su eve-kill.com",
+        sources: "FONTI //",
+        computing: "Calcolo le stime…",
+        allLayers: (n) => `tutti i ${n} layer in GPU`,
+        someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
+        vramLine: (free, total, pct) => `VRAM: <b>${free} GB liberi</b> su ${total} GB · ${pct}% in uso`,
+        badgeInUse: "in uso",
+        rating: { veloce: "veloce", accettabile: "accettabile", lento: "lento" },
+        errCap: "Errore", errLow: "errore",
+        setupTitle: "PRIMO <b>AVVIO</b>",
+        setupIntro: "Per funzionare 100% offline, Capsuleers.IA scarica una sola volta il modello IA e l'indice di conoscenza di EVE. Scegli il modello: potrai cambiarlo o aggiungerne altri in seguito.",
+        setupResume: "Se interrompi o cade la connessione, il download riprende da dove era rimasto.",
+        setupStart: "Scarica e avvia", setupCancel: "Annulla", setupRetry: "Riprova",
+        setupInstalled: "già scaricato",
+        setupInclLine: (gb) => `Incluso (una tantum): indice EVE + embedding · ~${gb} GB`,
+        setupTotalLine: (gb) => `Da scaricare ora: ~${gb} GB`,
+        setupErrCap: "Download non riuscito",
+        readyLine: (count, gpu) => `ONLINE · ${count} DOC · GPU:${gpu}`,
+        lblOverview: "Overview", titleOverview: "Overview del personaggio su capsuleers.app",
+        lblPvp: "Dati PvP", titlePvp: "Dati PvP e killboard su eve-kill.com",
+        stIndex: "Carico l'indice…",
+        stModels: (c) => `Indice: ${Number(c).toLocaleString()} documenti. Carico i modelli (GPU)…`,
+        stLoadingModel: (n) => `Carico ${n}…`,
+        stReady: (s) => !s.gpu
+          ? `Pronto · ${s.model} (GPU non disponibile: tutto su CPU, lento).`
+          : s.onGpu
+            ? `Pronto · ${s.model} (GPU: ${s.gpu}, ${s.loaded}/${s.total} layer).`
+            : `Pronto · ${s.model} MA LENTO: solo ${s.loaded}/${s.total} layer in GPU (VRAM insufficiente). Chiudi app che usano la GPU.`,
+      },
+      en: {
+        btnNew: "New", btnNewTitle: "New conversation",
+        btnLocal: "Local", btnLocalTitle: "Local intel from clipboard (copy the Local from EVE)",
+        btnModel: "Model", btnModelTitle: "Choose the AI model (with response-time estimate)",
+        wcInfo: "Info", wcMini: "Shrink to icon (always-on-top)", wcTray: "Minimize to tray",
+        wcMax: "Maximize", wcClose: "Close", miniExpand: "Click to expand",
+        aboutSub: "Local assistant for EVE Online", aboutPowered: "powered by",
+        aboutDisc1: "<b>Unofficial tool</b> made by fans, not affiliated with nor endorsed by Fenris Creations.",
+        aboutDisc2: "EVE Online and the EVE logo are registered trademarks of Fenris Creations. All rights reserved. All product names, logos and brands mentioned are property of their respective owners. Fenris Creations is in no way responsible for the content or operation of this application, nor can it be held liable for any damage arising from its use.",
+        aboutDisc3: "Data: EVE Static Data Export (Fenris Creations) and EVE University Wiki (CC-BY-SA). Answers are generated by a local AI and may contain errors: <b>always verify in-game</b>.",
+        modelsTitle: "<b>AI</b> MODEL",
+        modelsHint: "Estimate on the VRAM <b>free now</b>: the more layers fit in GPU, the faster the reply. Closing other apps that use the GPU (browser, Steam…) frees VRAM and speeds up bigger models. Times are indicative for a typical answer.<br>The model you choose becomes the <b>default</b> and is reused on every app restart.",
+        localTitle: "<b>LOCAL</b> INTEL",
+        inputPlaceholder: "// ask: skills, fitting, wormholes, sovereignty, missions…",
+        btnSend: "Send",
+        localOn: "Clipboard watch ON — copy the Local from EVE. Click to disable.",
+        localOff: "Local intel from clipboard (off) — click to enable",
+        danger: ["unknown", "low", "medium", "high"],
+        intelDetail: "Intel details", notFound: "not found",
+        killAbbr: "K", lossAbbr: "L",
+        localResolving: (n) => `resolving ${n} pilots…`,
+        loadingIntel: "Loading intel…",
+        pilotsCount: (n) => `${n} pilots`,
+        resolvedOf: (r, t) => ` (resolved ${r}/${t})`,
+        dangerousCount: (n) => ` · ${n} dangerous`,
+        loadingIntelOf: (name) => `Loading intel for ${name}…`,
+        noData: "No data",
+        statKills: "kills", statLoss: "losses", statEff: "eff",
+        fliesWith: "Often flies with", recentShips: "Recently used ships",
+        openKillmail: "Open the killmail on eve-kill.com",
+        sources: "SOURCES //",
+        computing: "Computing estimates…",
+        allLayers: (n) => `all ${n} layers in GPU`,
+        someLayers: (g, t) => `only ${g}/${t} layers in GPU`,
+        vramLine: (free, total, pct) => `VRAM: <b>${free} GB free</b> of ${total} GB · ${pct}% in use`,
+        badgeInUse: "in use",
+        rating: { veloce: "fast", accettabile: "acceptable", lento: "slow" },
+        errCap: "Error", errLow: "error",
+        setupTitle: "FIRST <b>RUN</b>",
+        setupIntro: "To run 100% offline, Capsuleers.IA downloads the AI model and the EVE knowledge index once. Pick a model: you can change it or add more later.",
+        setupResume: "If you stop or lose connection, the download resumes where it left off.",
+        setupStart: "Download & start", setupCancel: "Cancel", setupRetry: "Retry",
+        setupInstalled: "already downloaded",
+        setupInclLine: (gb) => `Included (one-time): EVE index + embedding · ~${gb} GB`,
+        setupTotalLine: (gb) => `To download now: ~${gb} GB`,
+        setupErrCap: "Download failed",
+        readyLine: (count, gpu) => `ONLINE · ${count} DOC · GPU:${gpu}`,
+        lblOverview: "Overview", titleOverview: "Character overview on capsuleers.app",
+        lblPvp: "PvP data", titlePvp: "PvP data and killboard on eve-kill.com",
+        stIndex: "Loading index…",
+        stModels: (c) => `Index: ${Number(c).toLocaleString()} documents. Loading models (GPU)…`,
+        stLoadingModel: (n) => `Loading ${n}…`,
+        stReady: (s) => !s.gpu
+          ? `Ready · ${s.model} (GPU unavailable: all on CPU, slow).`
+          : s.onGpu
+            ? `Ready · ${s.model} (GPU: ${s.gpu}, ${s.loaded}/${s.total} layers).`
+            : `Ready · ${s.model} BUT SLOW: only ${s.loaded}/${s.total} layers in GPU (insufficient VRAM). Close apps using the GPU.`,
+      },
+    };
+    const L = I18N[SYS_LANG];
+
+    // Applies the static strings to elements marked with data-i18n[-title|-html|-ph].
+    function applyStaticI18n() {
+      for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = L[el.dataset.i18n];
+      for (const el of document.querySelectorAll("[data-i18n-html]")) el.innerHTML = L[el.dataset.i18nHtml];
+      for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = L[el.dataset.i18nTitle];
+      for (const el of document.querySelectorAll("[data-i18n-ph]")) el.placeholder = L[el.dataset.i18nPh];
+    }
+    applyStaticI18n();
+
+    function showWelcome() {
+      const b = bubble("bot");
+      const md = document.createElement("div");
+      md.className = "md";
+      md.innerHTML = mdToHtml(WELCOME[SYS_LANG]);
+      b.appendChild(md);
+    }
+    showWelcome();  // first message on open
+
+    // Status from the engine arrives structured (object {k:…}); here we localize it.
+    function formatStatus(s) {
+      if (typeof s === "string") return s;
+      if (!s || !s.k) return "";
+      if (s.k === "index") return L.stIndex;
+      if (s.k === "models") return L.stModels(s.count);
+      if (s.k === "loadingModel") return L.stLoadingModel(s.model);
+      if (s.k === "ready") return L.stReady(s);
+      return "";
+    }
+    capsuleers.onStatus((s) => { statusText.textContent = formatStatus(s); });
+    capsuleers.onReady((info) => {
+      statusText.textContent = L.readyLine(info.count.toLocaleString(), (info.gpu || "cpu").toUpperCase());
+      q.disabled = false; send.disabled = false; q.focus();
+    });
+
+    let current = null, body = null;
+    capsuleers.onToken((t) => { if (body) { body.textContent += t; chat.scrollTop = chat.scrollHeight; } });
+
+    async function askNow() {
+      const text = q.value.trim();
+      if (!text) return;
+      q.value = ""; q.disabled = true; send.disabled = true;
+      bubble("user").textContent = text;
+      current = bubble("bot");
+      body = document.createElement("div");
+      body.className = "md";
+      current.appendChild(body);
+      const res = await capsuleers.ask(text);
+      if (res.error) body.textContent = "⚠ " + res.error;
+      else {
+        body.innerHTML = mdToHtml(res.answer);  // replaces the raw stream with rendered Markdown
+      }
+      if (!res.error && res.sources?.length) {
+        const s = document.createElement("div");
+        s.className = "sources";
+        s.innerHTML = `<b>${L.sources}</b> ` + res.sources.map(x =>
+          x.url ? `<a href="${x.url}">${x.title}</a>` : `${x.title} <span style="opacity:.6">(${x.type})</span>`).join(" · ");
+        current.appendChild(s);
+      }
+      if (!res.error && res.kills?.length) current.appendChild(renderKills(res.kills));
+      current = null; body = null;
+      q.disabled = false; send.disabled = false; q.focus();
+    }
+
+    send.addEventListener("click", askNow);
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askNow(); } });
+
+    // --- AI model selection (with response-time estimate given the VRAM) ---
+    const modelsPanel = document.getElementById("models");
+    const modelBtn = document.getElementById("model-btn");
+    const modelsList = document.getElementById("models-list");
+    let switching = false;
+
+    capsuleers.onReady(() => { modelBtn.disabled = false; });
+
+    function fmtEta(s) { return s >= 90 ? "~" + Math.round(s / 60) + "m" : "~" + s + "s"; }
+
+    function modelRow(m) {
+      const row = document.createElement("div");
+      row.className = "mrow" + (m.current ? " current" : "");
+      if (m.error) {
+        row.innerHTML = `<div class="mname">${esc(m.label)}</div><div class="mmeta meta-warn">${L.errLow}: ${esc(m.error)}</div>`;
+        return row;
+      }
+      const warn = m.fraction < 1 ? " meta-warn" : "";
+      const badge = m.current ? `<span class="badge now">${L.badgeInUse}</span>` : `<span class="badge ${m.rating}">${esc(L.rating[m.rating] || m.rating)}</span>`;
+      const layerTxt = m.gpuLayers >= m.totalLayers
+        ? L.allLayers(m.totalLayers)
+        : L.someLayers(m.gpuLayers, m.totalLayers);
+      row.innerHTML =
+        `<div class="mname">${esc(m.label)} ${badge}</div>` +
+        `<div class="mmeta${warn}">${m.sizeGB} GB · ${esc(m.quant)} · ${layerTxt}</div>` +
+        `<div class="mest"><div class="meta-eta">${fmtEta(m.etaSeconds)}</div><div class="meta-tps">~${m.tokPerSec} tok/s</div></div>`;
+      if (!m.current) row.addEventListener("click", () => selectModel(m, row));
+      return row;
+    }
+
+    async function loadModels() {
+      modelsList.innerHTML = `<div class="models-hint">${L.computing}</div>`;
+      const r = await capsuleers.models.list();
+      if (r.vram) {
+        const usedPct = Math.round(r.vram.usedMB / r.vram.totalMB * 100);
+        document.getElementById("models-vram").innerHTML =
+          L.vramLine((r.vram.freeMB / 1024).toFixed(1), (r.vram.totalMB / 1024).toFixed(1), usedPct);
+        document.getElementById("vram-fill").style.width = usedPct + "%";
+      }
+      if (r.error) { modelsList.innerHTML = `<div class="mmeta meta-warn">${L.errCap}: ${esc(r.error)}</div>`; return; }
+      modelsList.innerHTML = "";
+      (r.models || []).forEach((m) => modelsList.appendChild(modelRow(m)));
+    }
+
+    async function selectModel(m, row) {
+      if (switching) return;
+      switching = true;
+      document.querySelectorAll(".mrow").forEach((el) => el.classList.add("busy"));
+      row.classList.remove("busy");
+      row.querySelector(".meta-eta").textContent = "…";
+      q.disabled = true; send.disabled = true;  // input blocked during the swap
+      const res = await capsuleers.models.set(m.file);
+      switching = false;
+      q.disabled = false; send.disabled = false;
+      if (res?.error) { row.querySelector(".mmeta").innerHTML = `<span class="meta-warn">${L.errLow}: ${esc(res.error)}</span>`; }
+      await loadModels();  // reflects the new current model and the new VRAM
+    }
+
+    modelBtn.addEventListener("click", () => { if (!modelBtn.disabled) { modelsPanel.hidden = false; loadModels(); } });
+    document.getElementById("models-close").addEventListener("click", () => modelsPanel.hidden = true);
+    modelsPanel.addEventListener("click", (e) => { if (e.target === modelsPanel) modelsPanel.hidden = true; });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") modelsPanel.hidden = true; });
+
+    // --- First-run setup: on-demand download of AI model + EVE index ---
+    (() => {
+      const ov = document.getElementById("setup");
+      const listEl = document.getElementById("setup-models");
+      const inclEl = document.getElementById("setup-incl");
+      const totalEl = document.getElementById("setup-total");
+      const startBtn = document.getElementById("setup-start");
+      const actions = document.getElementById("setup-actions");
+      const prog = document.getElementById("setup-prog");
+      const fill = document.getElementById("setup-fill");
+      const labelEl = document.getElementById("setup-label");
+      const pctEl = document.getElementById("setup-pct");
+      const errEl = document.getElementById("setup-err");
+      let manifest = null, status = null, selected = null;
+
+      const GB = (b) => (b / 1e9).toFixed(1);
+      const MBs = (b) => (b / 1e6).toFixed(1);
+
+      // One-time bytes: embedding + index, only the pieces not yet present.
+      function baseBytes() {
+        let b = 0;
+        if (!status.embeddingReady) b += manifest.embedding.size;
+        if (!status.indexReady) b += manifest.index.files.reduce((s, f) => s + f.size, 0);
+        return b;
+      }
+      function totalBytes() {
+        let b = baseBytes();
+        const m = manifest.models.find((x) => x.id === selected);
+        if (m && !status.installedModels.includes(m.id)) b += m.size;
+        return b;
+      }
+      function renderTotal() {
+        inclEl.textContent = baseBytes() > 0 ? L.setupInclLine(GB(baseBytes())) : "";
+        totalEl.innerHTML = `<b>${L.setupTotalLine(GB(totalBytes()))}</b>`;
+      }
+      function renderModels() {
+        listEl.innerHTML = "";
+        for (const m of manifest.models) {
+          const installed = status.installedModels.includes(m.id);
+          const reco = (SYS_LANG === "it" && m.recommended) ? m.recommended : "";
+          const row = document.createElement("label");
+          row.className = "srow" + (m.id === selected ? " sel" : "");
+          row.innerHTML =
+            `<input type="radio" name="setup-model" ${m.id === selected ? "checked" : ""}>` +
+            `<span class="sname">${esc(m.label)}</span>` +
+            `<span class="ssize">${installed ? `<span class="sinstalled">${L.setupInstalled}</span>` : "~" + GB(m.size) + " GB"}</span>` +
+            (reco ? `<span class="sreco">${esc(reco)}</span>` : "");
+          row.querySelector("input").addEventListener("change", () => { selected = m.id; renderModels(); renderTotal(); });
+          listEl.appendChild(row);
+        }
+      }
+      function showErr(msg) {
+        prog.hidden = true; actions.hidden = false;
+        startBtn.textContent = L.setupRetry;
+        errEl.textContent = `${L.setupErrCap}: ${msg}`; errEl.hidden = false;
+      }
+
+      startBtn.addEventListener("click", async () => {
+        errEl.hidden = true; actions.hidden = true; prog.hidden = false;
+        labelEl.textContent = "…"; pctEl.textContent = "0%"; fill.style.width = "0%";
+        const res = await capsuleers.setup.start(selected);
+        if (res?.error && !res.aborted) showErr(res.error);
+      });
+      document.getElementById("setup-cancel").addEventListener("click", () => capsuleers.setup.cancel());
+
+      capsuleers.setup.onNeeded((data) => {
+        manifest = data.manifest; status = data.status;
+        selected = (manifest.models.find((m) => m.default) || manifest.models[0]).id;
+        errEl.hidden = true; prog.hidden = true; actions.hidden = false;
+        renderModels(); renderTotal();
+        ov.hidden = false;
+      });
+      capsuleers.setup.onProgress((p) => {
+        const pct = p.total ? Math.min(100, Math.round(p.received / p.total * 100)) : 0;
+        fill.style.width = pct + "%";
+        labelEl.textContent = p.label + (p.speed ? ` · ${MBs(p.speed)} MB/s` : "");
+        pctEl.textContent = `${pct}% · ${GB(p.received)}/${GB(p.total)} GB`;
+      });
+      capsuleers.setup.onDone(() => { ov.hidden = true; });
+      capsuleers.setup.onError((e) => { if (e.aborted) { prog.hidden = true; actions.hidden = false; } else showErr(e.message); });
+    })();
+  </script>
+</body>
+</html>

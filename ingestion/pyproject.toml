@@ -1,0 +1,23 @@
+[project]
+name = "capsuleers-ingestion"
+version = "0.1.0"
+description = "Pipeline di ingestione dati EVE Online (SDE + Wiki) per Capsuleers.IA"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",          # download SDE / chiamate Ollama / Qdrant
+    "qdrant-client>=1.9",   # client Qdrant
+    "tqdm>=4.66",           # progress bar ingestione
+    "python-dotenv>=1.0",   # lettura .env
+]
+# Nota: lo scraping wiki usa solo la stdlib (urllib) + TextExtracts (testo già
+# pulito), quindi non servono mwclient/BeautifulSoup.
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["capsuleers_ingestion*"]

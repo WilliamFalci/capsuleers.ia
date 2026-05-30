@@ -1,0 +1,62 @@
+# Cross-platform build and publishing to GitHub Releases.
+# Triggered by a version tag (e.g. `v0.1.0`) or manually (workflow_dispatch).
+# NATIVE build per OS: node-llama-cpp has per-platform binaries, so Linux runs
+# on ubuntu and Windows on windows. The publish owner/repo are injected
+# from the Actions environment (the placeholder in electron-builder.yml is overridden).
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # needed by electron-builder to create/update the release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: --linux
+          - os: windows-latest
+            platform: --win
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      # Install the dependencies (node-llama-cpp's postinstall downloads the
+      # native binaries for the runner's platform).
+      - run: npm ci
+
+      # Build the installer + publish to the current tag's release.
+      # owner/repo taken from the Actions repo, so they don't depend on the placeholder.
+      - name: Build & publish
+        run: >
+          npx --no-install electron-builder ${{ matrix.platform }}
+          --publish always
+          -c.publish.owner=${{ github.repository_owner }}
+          -c.publish.repo=${{ github.event.repository.name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Backup copy of the artifacts, also useful for workflow_dispatch.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capsuleers-ia-${{ matrix.os }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.exe
+            desktop/dist/latest*.yml
+          if-no-files-found: ignore

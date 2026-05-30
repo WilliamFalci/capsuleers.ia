@@ -1,0 +1,12 @@
+[Unit]
+Description=Capsuleers.IA — SDE check and update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Change the path if the repo is elsewhere.
+ExecStart=%h/Documenti/WORK/Capsuleers.IA/ops/update.sh
+# Generous timeout: a full rebuild can take ~45 min on the first run
+# (afterwards the embedding cache makes subsequent updates much faster).
+TimeoutStartSec=7200

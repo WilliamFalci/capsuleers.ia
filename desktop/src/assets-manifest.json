@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "_note": "Catalog of assets downloaded on-demand at first run. size in bytes, sha256 authoritative (computed from the validated files). The model URLs point to the canonical GGUF repos on HuggingFace: if a checksum doesn't match, the download fails safely (no corrupted file is used) — just fix the url or the sha256. For the index: replace CHANGE_ME with the GitHub repo owner and align the 'index-<version>' release.",
+
+  "index": {
+    "version": "2026.05.30",
+    "embedModel": "bge-m3",
+    "dim": 1024,
+    "baseUrl": "https://github.com/WilliamFalci/capsuleers.ia/releases/download/index-2026.05.30",
+    "files": [
+      { "name": "index.vec",        "size": 283062272, "sha256": "b2e8068e5ac94b9a325afdf70064e62cd693cb487da72664eba7e058bb76ff99" },
+      { "name": "index.meta.jsonl", "size": 39699117,  "sha256": "7bbb7c4b673d13428a12022603a956a05dad81bb7c4bda2ad7003f5031e9a1a9" },
+      { "name": "fit_lookup.json",  "size": 792631,    "sha256": "aeba38419e806b614dc2af2864948daf84dbc728e16659e28c2c0927d8c46f0d" },
+      { "name": "names_index.json", "size": 1115152,   "sha256": "6cc8936138586472fc6fa8204f03675660f31c647d113cb3636a923b3312e47c" }
+    ]
+  },
+
+  "embedding": {
+    "id": "bge-m3",
+    "filename": "bge-m3-Q8_0.gguf",
+    "size": 634553760,
+    "sha256": "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167",
+    "url": "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf",
+    "required": true
+  },
+
+  "models": [
+    {
+      "id": "qwen3-4b",
+      "label": "Qwen3 4B Instruct 2507",
+      "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "size": 2497281120,
+      "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+      "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "paramsB": 4,
+      "default": true,
+      "recommended": "Equilibrio velocità/qualità, gira bene anche su GPU da 6-8 GB."
+    },
+    {
+      "id": "qwen2.5-3b",
+      "label": "Qwen2.5 3B Instruct",
+      "filename": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "size": 1929903264,
+      "sha256": "9c9f56a391a3abbd5b89d0245bf6106081bcc3173119d4229235dd9d23253f94",
+      "url": "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "paramsB": 3,
+      "recommended": "Il più leggero: per GPU piccole o solo-CPU."
+    },
+    {
+      "id": "qwen2.5-7b",
+      "label": "Qwen2.5 7B Instruct",
+      "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "size": 4683074240,
+      "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+      "url": "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "paramsB": 7,
+      "recommended": "Più accurato; richiede ~6-8 GB di VRAM per stare tutto in GPU."
+    },
+    {
+      "id": "mistral-nemo",
+      "label": "Mistral Nemo Instruct 2407",
+      "filename": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+      "size": 7477208192,
+      "sha256": "7c1a10d202d8788dbe5628dc962254d10654c853cae6aaeca0618f05490d4a46",
+      "url": "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF/resolve/main/Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "paramsB": 12,
+      "recommended": "Il più capace; serve una GPU da 8+ GB per essere veloce."
+    }
+  ]
+}

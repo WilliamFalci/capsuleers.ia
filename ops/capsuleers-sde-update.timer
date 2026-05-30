@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily SDE update for Capsuleers.IA
+
+[Timer]
+# Every day at 11:00; Persistent catches up the run if the machine was off.
+OnCalendar=*-*-* 11:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,39 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Optional GPU: uncomment if an NVIDIA GPU is available.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # The Node API runs in dev with `npm run dev`.
+  # For deployment, uncomment and use api/Dockerfile.
+  # api:
+  #   build: ./api
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${API_PORT:-3000}:3000"
+  #   env_file: .env
+  #   depends_on: [qdrant, ollama]
+
+volumes:
+  qdrant_data:
+  ollama_data:

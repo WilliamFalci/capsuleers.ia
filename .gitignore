@@ -1,0 +1,29 @@
+# Ambiente
+.env
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.eggs/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Dati scaricati / generati (SDE, dump wiki, cache)
+data/
+ingestion/data/
+*.sqlite
+*.bz2
+*.zip
+*.jsonl
+
+# Desktop standalone
+desktop/node_modules/
+desktop/models/
+*.gguf
+*.ipull
