@@ -1,22 +1,34 @@
 # Releasing
 
 The app is **lite**: the installer contains only the code. Models (.gguf) and the RAG index
-are downloaded on first launch (see [`desktop/src/assets-manifest.json`](desktop/src/assets-manifest.json)).
+are downloaded on first launch. The RAG index + embedding are fixed assets
+([`desktop/src/assets-manifest.json`](desktop/src/assets-manifest.json)); the selectable
+chat models live in an **updatable catalog** ([`desktop/src/models-catalog.json`](desktop/src/models-catalog.json))
+fetched from the repo at runtime, so new models appear **without an app update**.
 Three independent lifecycles: **app** (auto-update), **index** (GitHub Releases),
-**models** (HuggingFace).
+**models** (HuggingFace, via the catalog).
+
+## Adding or updating a chat model (no app release needed)
+
+Edit [`desktop/src/models-catalog.json`](desktop/src/models-catalog.json) on `main` and push:
+the app fetches it at every launch, so users see the change immediately. Each entry is just
+a HuggingFace `repo` + `file` (plus `label`, approximate `sizeGB`/`paramsB` for display and
+the VRAM range filter). **No checksum to maintain** — the app resolves the exact size and
+SHA256 live from HuggingFace (LFS oid) at download time. Keep entries within the `range`
+(too-large models won't run on typical hardware; too-small ones hurt answer quality).
+Run `cd desktop && npm run validate-hf` to confirm every `repo`/`file` exists on HuggingFace.
 
 ## One-time, when the repo goes on GitHub
 
-Replace `CHANGE_ME` with the repo owner in:
+Point the owner/repo at your fork in:
 - [`desktop/electron-builder.yml`](desktop/electron-builder.yml) → `publish.owner` (CI
   overrides it anyway, but keep it aligned for local builds)
 - [`desktop/src/assets-manifest.json`](desktop/src/assets-manifest.json) → `index.baseUrl`
+- [`desktop/src/assets.mjs`](desktop/src/assets.mjs) → `CATALOG_URL` (the raw URL of
+  `models-catalog.json` on your repo's default branch)
 
-Validate the models' HuggingFace URLs (without downloading them): `cd desktop && npm run validate-hf`.
-It compares the manifest's sha256 + size against the metadata published by HuggingFace and exits
-with an error if anything doesn't match. If it fails, fix `url` or `sha256` in the manifest
-— the runtime download would fail safely anyway. Rerun it every time you
-change a model (an HF repo might re-quantize a file and change its fingerprint).
+Then `cd desktop && npm run validate-hf` to confirm the embedding (checksum match) and every
+catalog model (`repo`/`file` exist on HuggingFace).
 
 ## Releasing the index (when the knowledge base changes)
 

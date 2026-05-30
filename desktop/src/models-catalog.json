@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "_note": "Updatable catalog of selectable chat models. The app fetches this file from the repo at runtime (raw GitHub) so new models appear WITHOUT an app update; this bundled copy is the offline fallback. Each entry is just a HuggingFace repo + file: the app resolves the exact size and SHA256 live from HuggingFace (LFS oid) at download time, so no checksum maintenance is needed. 'sizeGB'/'paramsB' are approximate, used only for display and the VRAM range filter. To add a model: append an entry within the size range below and validate the repo/file exist on HuggingFace.",
+  "range": { "minGB": 1.8, "maxGB": 9.0 },
+  "models": [
+    {
+      "id": "qwen3-4b",
+      "label": "Qwen3 4B Instruct 2507",
+      "repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+      "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "paramsB": 4, "quant": "Q4_K_M", "sizeGB": 2.5,
+      "default": true,
+      "recommended": "Equilibrio velocità/qualità, gira bene anche su GPU da 6-8 GB."
+    },
+    {
+      "id": "qwen2.5-3b",
+      "label": "Qwen2.5 3B Instruct",
+      "repo": "bartowski/Qwen2.5-3B-Instruct-GGUF",
+      "file": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "paramsB": 3, "quant": "Q4_K_M", "sizeGB": 1.9,
+      "recommended": "Il più leggero: per GPU piccole o solo-CPU."
+    },
+    {
+      "id": "qwen2.5-7b",
+      "label": "Qwen2.5 7B Instruct",
+      "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "file": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "paramsB": 7, "quant": "Q4_K_M", "sizeGB": 4.7,
+      "recommended": "Più accurato; richiede ~6-8 GB di VRAM per stare tutto in GPU."
+    },
+    {
+      "id": "mistral-nemo",
+      "label": "Mistral Nemo Instruct 2407",
+      "repo": "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
+      "file": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+      "paramsB": 12, "quant": "Q4_K_M", "sizeGB": 7.5,
+      "recommended": "Il più capace; serve una GPU da 8+ GB per essere veloce."
+    }
+  ]
+}

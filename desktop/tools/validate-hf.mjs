@@ -1,60 +1,59 @@
 #!/usr/bin/env node
-// Validates the manifest's HuggingFace URLs by comparing sha256 + size against the
-// metadata published by HF (LFS oid), WITHOUT downloading the files. Re-run it every
-// time a model is changed: an HF repo might re-quantize a file and change its
-// sha256, making the user-side download fail (integrity gate).
+// Validates the HuggingFace sources WITHOUT downloading the files:
+//  - the embedding (assets-manifest.json): compares its precomputed sha256 + size
+//    against the metadata published by HuggingFace (LFS oid);
+//  - the chat models (models-catalog.json): confirms each repo/file actually
+//    exists on HuggingFace (size/sha256 are resolved live by the app, so there's
+//    no checksum to precompute) and that sizeGB is roughly right.
 //
 //   node tools/validate-hf.mjs        (or: npm run validate-hf)
 //
-// Exits with code 1 if anything does not match (useful in CI).
+// Exits with code 1 if the embedding mismatches or a catalog model is missing.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MANIFEST = path.join(HERE, "..", "src", "assets-manifest.json");
-const manifest = JSON.parse(fs.readFileSync(MANIFEST, "utf-8"));
+const SRC = path.join(HERE, "..", "src");
+const manifest = JSON.parse(fs.readFileSync(path.join(SRC, "assets-manifest.json"), "utf-8"));
+const catalog = JSON.parse(fs.readFileSync(path.join(SRC, "models-catalog.json"), "utf-8"));
 
-// Extracts owner/repo/filename from https://huggingface.co/<owner>/<repo>/resolve/<ref>/<file>
-function parse(url) {
-  const m = url.match(/huggingface\.co\/([^/]+)\/([^/]+)\/resolve\/[^/]+\/(.+)$/);
-  return m ? { owner: m[1], repo: m[2], file: decodeURIComponent(m[3]) } : null;
-}
-
-async function hfFileInfo({ owner, repo, file }) {
-  const api = `https://huggingface.co/api/models/${owner}/${repo}/tree/main?recursive=1`;
+async function hfFile(repo, file) {
+  const api = `https://huggingface.co/api/models/${repo}/tree/main?recursive=1`;
   const res = await fetch(api, { headers: { "User-Agent": "capsuleers-validate-hf" } });
-  if (res.status === 404) return { error: "repo non trovato (404)" };
+  if (res.status === 404) return { error: "repo not found (404)" };
   if (!res.ok) return { error: `HTTP ${res.status}` };
   const entry = (await res.json()).find((e) => e.path === file);
-  if (!entry) return { error: "file non presente nel repo" };
-  // For LFS files, lfs.oid is the sha256 of the content.
+  if (!entry) return { error: "file not present in repo" };
   return { sha: entry.lfs?.oid || null, size: entry.lfs?.size ?? entry.size ?? null };
 }
 
-const items = [
-  { id: "embedding", url: manifest.embedding.url, sha256: manifest.embedding.sha256, size: manifest.embedding.size },
-  ...manifest.models.map((m) => ({ id: m.id, url: m.url, sha256: m.sha256, size: m.size })),
-];
-
-let okCount = 0;
-const bad = [];
-for (const it of items) {
-  const p = parse(it.url);
-  if (!p) { console.log(`✗ ${it.id}: URL non riconosciuto`); bad.push(it.id); continue; }
-  let info;
-  try { info = await hfFileInfo(p); } catch (e) { info = { error: e.message }; }
-  if (info.error) { console.log(`✗ ${it.id} (${p.owner}/${p.repo}/${p.file}): ${info.error}`); bad.push(it.id); continue; }
-  const shaOk = info.sha && info.sha.toLowerCase() === it.sha256.toLowerCase();
-  const sizeOk = info.size == null || Number(info.size) === it.size;
-  if (shaOk && sizeOk) { console.log(`✓ ${it.id}: combacia (sha256 + size)`); okCount++; }
-  else {
-    console.log(`✗ ${it.id} (${p.owner}/${p.repo}):`);
-    console.log(`    manifest sha256: ${it.sha256}`);
-    console.log(`    HF       sha256: ${info.sha || "(assente)"}  ${shaOk ? "OK" : "≠"}`);
-    if (!sizeOk) console.log(`    size: manifest ${it.size} vs HF ${info.size}`);
-    bad.push(it.id);
-  }
+function parseHfUrl(url) {
+  const m = url.match(/huggingface\.co\/([^/]+)\/([^/]+)\/resolve\/[^/]+\/(.+)$/);
+  return m ? { repo: `${m[1]}/${m[2]}`, file: decodeURIComponent(m[3]) } : null;
 }
-console.log(`\n${bad.length === 0 ? "TUTTI VALIDI" : "DA CORREGGERE: " + bad.join(", ")} — ${okCount}/${items.length} ok`);
-process.exit(bad.length === 0 ? 0 : 1);
+
+let bad = 0, okc = 0;
+
+// Embedding: precomputed sha256 + size must match.
+{
+  const e = manifest.embedding, p = parseHfUrl(e.url);
+  const info = p ? await hfFile(p.repo, p.file) : { error: "unrecognized url" };
+  if (info.error) { console.log(`✗ embedding (${e.filename}): ${info.error}`); bad++; }
+  else if (info.sha?.toLowerCase() === e.sha256.toLowerCase() && Number(info.size) === e.size) { console.log(`✓ embedding: matches (sha256 + size)`); okc++; }
+  else { console.log(`✗ embedding (${e.filename}): sha256/size mismatch\n    manifest ${e.sha256} / ${e.size}\n    HF       ${info.sha} / ${info.size}`); bad++; }
+}
+
+// Catalog models: confirm the repo/file exist; sanity-check sizeGB.
+for (const m of catalog.models) {
+  const info = await hfFile(m.repo, m.file);
+  if (info.error) { console.log(`✗ ${m.id} (${m.repo}/${m.file}): ${info.error}`); bad++; continue; }
+  const gb = Number(info.size) / 1e9;
+  const off = m.sizeGB ? Math.abs(gb - m.sizeGB) / m.sizeGB : 0;
+  const warn = off > 0.15 ? `  ⚠ sizeGB ${m.sizeGB} vs real ${gb.toFixed(1)}` : "";
+  console.log(`✓ ${m.id}: exists on HF (${gb.toFixed(1)} GB)${warn}`);
+  okc++;
+}
+
+console.log(`\n${bad === 0 ? "ALL VALID" : "PROBLEMS: " + bad}  —  ${okc} ok`);
+process.exit(bad === 0 ? 0 : 1);

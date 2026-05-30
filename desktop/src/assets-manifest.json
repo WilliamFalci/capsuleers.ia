@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "_note": "Catalog of assets downloaded on-demand at first run. size in bytes, sha256 authoritative (computed from the validated files). The model URLs point to the canonical GGUF repos on HuggingFace: if a checksum doesn't match, the download fails safely (no corrupted file is used) — just fix the url or the sha256. For the index: replace CHANGE_ME with the GitHub repo owner and align the 'index-<version>' release.",
+  "_note": "Bundled manifest for the FIXED on-demand assets: the RAG index (hosted on the GitHub release index-<version>) and the embedding model (bge-m3). size in bytes, sha256 authoritative. Chat models are NOT here — they live in the updatable models-catalog.json (size/SHA256 resolved live from HuggingFace).",
 
   "index": {
     "version": "2026.05.30",
@@ -22,53 +22,5 @@
     "sha256": "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167",
     "url": "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf",
     "required": true
-  },
-
-  "models": [
-    {
-      "id": "qwen3-4b",
-      "label": "Qwen3 4B Instruct 2507",
-      "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-      "size": 2497281120,
-      "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
-      "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-      "quant": "Q4_K_M",
-      "paramsB": 4,
-      "default": true,
-      "recommended": "Equilibrio velocità/qualità, gira bene anche su GPU da 6-8 GB."
-    },
-    {
-      "id": "qwen2.5-3b",
-      "label": "Qwen2.5 3B Instruct",
-      "filename": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
-      "size": 1929903264,
-      "sha256": "9c9f56a391a3abbd5b89d0245bf6106081bcc3173119d4229235dd9d23253f94",
-      "url": "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
-      "quant": "Q4_K_M",
-      "paramsB": 3,
-      "recommended": "Il più leggero: per GPU piccole o solo-CPU."
-    },
-    {
-      "id": "qwen2.5-7b",
-      "label": "Qwen2.5 7B Instruct",
-      "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-      "size": 4683074240,
-      "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
-      "url": "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-      "quant": "Q4_K_M",
-      "paramsB": 7,
-      "recommended": "Più accurato; richiede ~6-8 GB di VRAM per stare tutto in GPU."
-    },
-    {
-      "id": "mistral-nemo",
-      "label": "Mistral Nemo Instruct 2407",
-      "filename": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
-      "size": 7477208192,
-      "sha256": "7c1a10d202d8788dbe5628dc962254d10654c853cae6aaeca0618f05490d4a46",
-      "url": "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF/resolve/main/Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
-      "quant": "Q4_K_M",
-      "paramsB": 12,
-      "recommended": "Il più capace; serve una GPU da 8+ GB per essere veloce."
-    }
-  ]
+  }
 }

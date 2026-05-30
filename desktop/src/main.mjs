@@ -7,7 +7,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState } from "./engine.mjs";
 import { localIntel, characterDetail } from "./intel.mjs";
 import { startWatch, stopWatch, isEnabled, scanNow } from "./clipboard-watch.mjs";
-import { loadManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, chatModelTask } from "./assets.mjs";
+import { loadManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, loadCatalog, installedCatalogIds, modelTask } from "./assets.mjs";
 import electronUpdater from "electron-updater";
 const { autoUpdater } = electronUpdater;
 
@@ -277,11 +277,33 @@ async function setupAssetDirs() {
 
 // Is the setup flow (asset download) needed? Only if packaged and the embedding,
 // index, or a chat model are missing. In dev the assets are in the project → never.
-function setupState() {
-  if (!assetDirs) return { needed: false };
+function setupNeeded() {
+  return !!assetDirs && !assetStatus({ ...assetDirs }).firstRunReady;
+}
+
+// Full first-run info for the renderer: status, bytes still to download for the
+// one-time base (embedding + index), and the model choices from the catalog.
+async function setupInfo() {
   const manifest = loadManifest();
   const status = assetStatus({ ...assetDirs, manifest });
-  return { needed: !status.firstRunReady, manifest, status };
+  let baseBytes = 0;
+  if (!status.embeddingReady) baseBytes += manifest.embedding.size;
+  if (!status.indexReady) baseBytes += manifest.index.files.reduce((s, f) => s + f.size, 0);
+  const catalog = await loadCatalog();
+  const installed = new Set(installedCatalogIds(catalog, assetDirs.modelsDir));
+  const models = catalog.models.map((m) => ({
+    id: m.id, label: m.label, sizeGB: m.sizeGB, paramsB: m.paramsB, quant: m.quant,
+    recommended: m.recommended || "", default: !!m.default, installed: installed.has(m.id),
+  }));
+  return { needed: !status.firstRunReady, status, baseBytes, models };
+}
+
+// Rough VRAM fit for a not-yet-downloaded model (size + ~1GB context vs free VRAM).
+function fitRating(sizeGB, freeGB) {
+  if (freeGB == null) return "";
+  if (freeGB >= sizeGB + 1) return "veloce";
+  if (freeGB >= sizeGB * 0.6) return "accettabile";
+  return "lento";
 }
 
 // Auto-update of the app's code (electron-updater, GitHub Releases channel). The
@@ -327,8 +349,7 @@ app.whenReady().then(async () => {
   setupAutoUpdate();  // checks for app updates in the background (only if packaged)
   // Once the window is ready: if assets are missing, show setup; otherwise start the engine.
   win.webContents.once("did-finish-load", async () => {
-    const st = setupState();
-    if (st.needed) win?.webContents.send("setup:needed", { manifest: st.manifest, status: st.status });
+    if (setupNeeded()) win?.webContents.send("setup:needed", await setupInfo());
     else startEngine();
   });
 
@@ -389,34 +410,42 @@ ipcMain.handle("models:set", async (_e, file) => {
 });
 
 // Catalog of chat models NOT yet downloaded (packaged only) — so the user can
-// fetch and use another model after first run. In dev all models are local → empty.
-ipcMain.handle("models:catalog", () => {
+// fetch and use another model after first run. From the updatable remote catalog,
+// filtered to the size range, sorted by how well they fit the free VRAM.
+ipcMain.handle("models:catalog", async () => {
   if (!assetDirs) return { available: false, models: [] };
-  const manifest = loadManifest();
-  const st = assetStatus({ ...assetDirs, manifest });
-  const models = manifest.models
-    .filter((m) => !st.installedModels.includes(m.id))
-    .map((m) => ({ id: m.id, label: m.label, sizeGB: +(m.size / 1e9).toFixed(1), quant: m.quant, paramsB: m.paramsB, recommended: m.recommended || "" }));
-  return { available: true, models };
+  try {
+    const catalog = await loadCatalog();
+    const installed = new Set(installedCatalogIds(catalog, assetDirs.modelsDir));
+    const v = await vramState().catch(() => null);
+    const freeGB = v ? v.freeMB / 1024 : null;
+    const models = catalog.models.filter((m) => !installed.has(m.id)).map((m) => ({
+      id: m.id, label: m.label, sizeGB: m.sizeGB, quant: m.quant, paramsB: m.paramsB,
+      recommended: m.recommended || "", rating: fitRating(m.sizeGB, freeGB),
+    }));
+    const order = { veloce: 0, accettabile: 1, lento: 2, "": 3 };
+    models.sort((a, b) => (order[a.rating] - order[b.rating]) || (a.sizeGB - b.sizeGB));
+    return { available: true, models };
+  } catch (e) { return { available: true, models: [], error: e.message }; }
 });
 // Download an extra chat model on demand, then switch to it. Progress via
 // "models:download-progress"; cancelable via "models:download-cancel".
 ipcMain.handle("models:download", async (_e, modelId) => {
   if (!assetDirs) return { error: "Download non disponibile (asset locali)." };
   if (modelDlAbort || setupAbort) return { error: "Download già in corso." };
-  const manifest = loadManifest();
-  const m = manifest.models.find((x) => x.id === modelId);
-  if (!m) return { error: "Modello sconosciuto." };
   modelDlAbort = new AbortController();
   try {
-    const task = chatModelTask(manifest, assetDirs.modelsDir, modelId);
-    await downloadTasks([task], {
+    const catalog = await loadCatalog({ signal: modelDlAbort.signal });
+    const entry = catalog.models.find((m) => m.id === modelId);
+    if (!entry) { modelDlAbort = null; return { error: "Modello sconosciuto." }; }
+    const t = await modelTask(entry, assetDirs.modelsDir, modelDlAbort.signal);
+    await downloadTasks([t], {
       signal: modelDlAbort.signal,
       onProgress: (p) => { if (!win?.isDestroyed()) win.webContents.send("models:download-progress", { ...p, modelId }); },
     });
     modelDlAbort = null;
     if (!ready) return { ok: true };  // engine not up yet → just downloaded
-    const res = await setModel(m.filename, (s) => win?.webContents.send("status", s));  // use it now
+    const res = await setModel(entry.file, (s) => win?.webContents.send("status", s));  // use it now
     return { ok: true, ...res };
   } catch (e) {
     modelDlAbort = null;
@@ -427,8 +456,8 @@ ipcMain.handle("models:download", async (_e, modelId) => {
 ipcMain.on("models:download-cancel", () => { if (modelDlAbort) modelDlAbort.abort(); });
 
 // ── First-run setup: on-demand asset download ──────────────────────────────
-// State (is setup needed? which models to choose?) requested by the renderer.
-ipcMain.handle("setup:state", () => setupState());
+// Full first-run info (status + bytes + model choices) requested by the renderer.
+ipcMain.handle("setup:state", async () => (assetDirs ? await setupInfo() : { needed: false }));
 // Start downloading the first-run set (embedding + index + chosen model).
 // Progress via "setup:progress"; on completion, start the engine and send "setup:done".
 ipcMain.handle("setup:start", async (_e, modelId) => {
@@ -436,7 +465,9 @@ ipcMain.handle("setup:start", async (_e, modelId) => {
   if (setupAbort) return { error: "Download già in corso." };
   setupAbort = new AbortController();
   try {
-    const tasks = firstRunTasks({ ...assetDirs, modelId });
+    const catalog = await loadCatalog({ signal: setupAbort.signal });
+    const entry = catalog.models.find((m) => m.id === modelId) || catalog.models.find((m) => m.default) || catalog.models[0];
+    const tasks = await firstRunTasks({ ...assetDirs, modelEntry: entry, signal: setupAbort.signal });
     await downloadTasks(tasks, {
       signal: setupAbort.signal,
       onProgress: (p) => { if (!win?.isDestroyed()) win.webContents.send("setup:progress", p); },
