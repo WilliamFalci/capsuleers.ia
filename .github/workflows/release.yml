@@ -40,14 +40,11 @@ jobs:
       # native binaries for the runner's platform).
       - run: npm ci
 
-      # Build the installer + publish to the current tag's release.
-      # owner/repo taken from the Actions repo, so they don't depend on the placeholder.
+      # Build the installer + publish to the current tag's release. owner/repo
+      # come from electron-builder.yml (publish:). Avoid the -c.publish.* CLI
+      # dot-notation: it breaks under PowerShell on the Windows runners.
       - name: Build & publish
-        run: >
-          npx --no-install electron-builder ${{ matrix.platform }}
-          --publish always
-          -c.publish.owner=${{ github.repository_owner }}
-          -c.publish.repo=${{ github.event.repository.name }}
+        run: npx --no-install electron-builder ${{ matrix.platform }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
