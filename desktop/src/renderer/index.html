@@ -730,18 +730,33 @@
       .replace(/(?<![*])\*([^*\n]+)\*(?![*])/g, "<em>$1</em>");
     function mdToHtml(md) {
       const lines = esc(md).split("\n");
-      let html = "", list = null;
-      const close = () => { if (list) { html += `</${list}>`; list = null; } };
+      let html = "";
+      const stack = [];      // nested lists: [{ type:'ul'|'ol', indent:number }]
+      let liOpen = false;    // is the last <li> still open (so a child list nests inside it)?
+      const closeLi = () => { if (liOpen) { html += "</li>"; liOpen = false; } };
+      const popList = () => { closeLi(); html += `</${stack.pop().type}>`; if (stack.length) liOpen = true; };
+      const closeAll = () => { while (stack.length) popList(); };
       for (const raw of lines) {
         const line = raw.replace(/\s+$/, "");
         let m;
-        if (m = line.match(/^\s*#{1,6}\s+(.*)/)) { close(); html += `<h4>${inline(m[1])}</h4>`; }
-        else if (m = line.match(/^\s*[-*]\s+(.*)/)) { if (list !== "ul") { close(); html += "<ul>"; list = "ul"; } html += `<li>${inline(m[1])}</li>`; }
-        else if (m = line.match(/^\s*\d+\.\s+(.*)/)) { if (list !== "ol") { close(); html += "<ol>"; list = "ol"; } html += `<li>${inline(m[1])}</li>`; }
-        else if (line.trim() === "") { close(); }
-        else { close(); html += `<p>${inline(line)}</p>`; }
+        if (m = line.match(/^\s*#{1,6}\s+(.*)/)) { closeAll(); html += `<h4>${inline(m[1])}</h4>`; }
+        else if (m = line.match(/^(\s*)(?:[-*]|\d+\.)\s+(.*)/)) {
+          const indent = m[1].replace(/\t/g, "  ").length;   // tab = 2 spazi
+          const type = /^\s*\d+\./.test(line) ? "ol" : "ul";
+          while (stack.length && stack[stack.length - 1].indent > indent) popList();  // chiudi i livelli più profondi
+          const top = stack[stack.length - 1];
+          if (!top || indent > top.indent) {                 // più indentato → nuova sottolista dentro il <li> corrente
+            html += `<${type}>`; stack.push({ type, indent }); liOpen = false;
+          } else {                                           // stesso livello → chiudi il <li> fratello
+            closeLi();
+            if (top.type !== type) { html += `</${stack.pop().type}><${type}>`; stack.push({ type, indent }); }
+          }
+          html += `<li>${inline(m[2])}`; liOpen = true;
+        }
+        else if (line.trim() === "") { closeAll(); }
+        else { closeAll(); html += `<p>${inline(line)}</p>`; }
       }
-      close();
+      closeAll();
       return html;
     }
 
