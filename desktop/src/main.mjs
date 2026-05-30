@@ -348,6 +348,9 @@ app.on("before-quit", (e) => {
   if (shuttingDown) return;        // second call: actually let it quit
   e.preventDefault();
   shuttingDown = true;
+  // Abort any in-flight first-run download so the stream/connection tear down
+  // cleanly; the partial ".part" file stays on disk and resumes on next launch.
+  if (setupAbort) setupAbort.abort();
   shutdown().finally(() => app.quit());
 });
 

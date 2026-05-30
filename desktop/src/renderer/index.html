@@ -370,6 +370,10 @@
     #setup { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
              background: rgba(5,6,8,.92); backdrop-filter: blur(4px); }
     #setup[hidden] { display: none; }
+    /* hidden deve vincere anche sugli elementi flex/grid interni (start button, ecc.) */
+    #setup [hidden] { display: none !important; }
+    /* Lista modelli bloccata durante il download: non interagibile e attenuata. */
+    #setup-models.locked { opacity: .5; pointer-events: none; filter: grayscale(.35); }
     .setup-panel { position: relative; width: min(640px, 92vw); max-height: 88vh; overflow-y: auto;
       padding: 1.6rem; background: linear-gradient(180deg, #14171c, #0e1014);
       border: 1px solid var(--orange); border-top: 3px solid var(--orange);
@@ -1139,14 +1143,20 @@
           listEl.appendChild(row);
         }
       }
+      // Blocca/sblocca la scelta del modello (durante il download non si cambia).
+      function setLocked(on) {
+        listEl.classList.toggle("locked", on);
+        for (const inp of listEl.querySelectorAll("input")) inp.disabled = on;
+      }
       function showErr(msg) {
-        prog.hidden = true; actions.hidden = false;
+        prog.hidden = true; actions.hidden = false; setLocked(false);
         startBtn.textContent = L.setupRetry;
         errEl.textContent = `${L.setupErrCap}: ${msg}`; errEl.hidden = false;
       }
 
       startBtn.addEventListener("click", async () => {
-        errEl.hidden = true; actions.hidden = true; prog.hidden = false;
+        // Durante il download: nascondi il pulsante e disabilita la scelta del modello.
+        errEl.hidden = true; actions.hidden = true; prog.hidden = false; setLocked(true);
         labelEl.textContent = "…"; pctEl.textContent = "0%"; fill.style.width = "0%";
         const res = await capsuleers.setup.start(selected);
         if (res?.error && !res.aborted) showErr(res.error);
@@ -1156,7 +1166,7 @@
       capsuleers.setup.onNeeded((data) => {
         manifest = data.manifest; status = data.status;
         selected = (manifest.models.find((m) => m.default) || manifest.models[0]).id;
-        errEl.hidden = true; prog.hidden = true; actions.hidden = false;
+        errEl.hidden = true; prog.hidden = true; actions.hidden = false; setLocked(false);
         renderModels(); renderTotal();
         ov.hidden = false;
       });
@@ -1167,7 +1177,7 @@
         pctEl.textContent = `${pct}% · ${GB(p.received)}/${GB(p.total)} GB`;
       });
       capsuleers.setup.onDone(() => { ov.hidden = true; });
-      capsuleers.setup.onError((e) => { if (e.aborted) { prog.hidden = true; actions.hidden = false; } else showErr(e.message); });
+      capsuleers.setup.onError((e) => { if (e.aborted) { prog.hidden = true; actions.hidden = false; setLocked(false); } else showErr(e.message); });
     })();
   </script>
 </body>
