@@ -7,7 +7,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState } from "./engine.mjs";
 import { localIntel, characterDetail } from "./intel.mjs";
 import { startWatch, stopWatch, isEnabled, scanNow } from "./clipboard-watch.mjs";
-import { loadManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta } from "./assets.mjs";
+import { loadManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, chatModelTask } from "./assets.mjs";
 import electronUpdater from "electron-updater";
 const { autoUpdater } = electronUpdater;
 
@@ -264,6 +264,7 @@ function scanClipboardNow() {
 // stays in the project and the assets are assumed already present (no setup flow).
 let assetDirs = null;        // { modelsDir, dataDir } when packaged; null in dev
 let setupAbort = null;       // AbortController for the in-progress first-run download
+let modelDlAbort = null;     // AbortController for an extra model downloaded post-setup
 async function setupAssetDirs() {
   if (!app.isPackaged) return;
   const modelsDir = path.join(app.getPath("userData"), "models");
@@ -348,9 +349,11 @@ app.on("before-quit", (e) => {
   if (shuttingDown) return;        // second call: actually let it quit
   e.preventDefault();
   shuttingDown = true;
-  // Abort any in-flight first-run download so the stream/connection tear down
-  // cleanly; the partial ".part" file stays on disk and resumes on next launch.
+  // Abort any in-flight download (first-run setup or an extra model) so the
+  // stream/connection tear down cleanly; the partial ".part" file stays on disk
+  // and resumes on next launch.
   if (setupAbort) setupAbort.abort();
+  if (modelDlAbort) modelDlAbort.abort();
   shutdown().finally(() => app.quit());
 });
 
@@ -384,6 +387,44 @@ ipcMain.handle("models:set", async (_e, file) => {
   try { return await setModel(file, (s) => win?.webContents.send("status", s)); }
   catch (e) { return { error: e.message }; }
 });
+
+// Catalog of chat models NOT yet downloaded (packaged only) — so the user can
+// fetch and use another model after first run. In dev all models are local → empty.
+ipcMain.handle("models:catalog", () => {
+  if (!assetDirs) return { available: false, models: [] };
+  const manifest = loadManifest();
+  const st = assetStatus({ ...assetDirs, manifest });
+  const models = manifest.models
+    .filter((m) => !st.installedModels.includes(m.id))
+    .map((m) => ({ id: m.id, label: m.label, sizeGB: +(m.size / 1e9).toFixed(1), quant: m.quant, paramsB: m.paramsB, recommended: m.recommended || "" }));
+  return { available: true, models };
+});
+// Download an extra chat model on demand, then switch to it. Progress via
+// "models:download-progress"; cancelable via "models:download-cancel".
+ipcMain.handle("models:download", async (_e, modelId) => {
+  if (!assetDirs) return { error: "Download non disponibile (asset locali)." };
+  if (modelDlAbort || setupAbort) return { error: "Download già in corso." };
+  const manifest = loadManifest();
+  const m = manifest.models.find((x) => x.id === modelId);
+  if (!m) return { error: "Modello sconosciuto." };
+  modelDlAbort = new AbortController();
+  try {
+    const task = chatModelTask(manifest, assetDirs.modelsDir, modelId);
+    await downloadTasks([task], {
+      signal: modelDlAbort.signal,
+      onProgress: (p) => { if (!win?.isDestroyed()) win.webContents.send("models:download-progress", { ...p, modelId }); },
+    });
+    modelDlAbort = null;
+    if (!ready) return { ok: true };  // engine not up yet → just downloaded
+    const res = await setModel(m.filename, (s) => win?.webContents.send("status", s));  // use it now
+    return { ok: true, ...res };
+  } catch (e) {
+    modelDlAbort = null;
+    const aborted = /abort/i.test(e?.name || "") || /annull/i.test(e?.message || "");
+    return { error: e.message, aborted };
+  }
+});
+ipcMain.on("models:download-cancel", () => { if (modelDlAbort) modelDlAbort.abort(); });
 
 // ── First-run setup: on-demand asset download ──────────────────────────────
 // State (is setup needed? which models to choose?) requested by the renderer.

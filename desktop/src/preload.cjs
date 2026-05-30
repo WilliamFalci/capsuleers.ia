@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld("capsuleers", {
     list: () => ipcRenderer.invoke("models:list"),
     vram: () => ipcRenderer.invoke("models:vram"),
     set: (file) => ipcRenderer.invoke("models:set", file),
+    // Download an extra model on demand (catalog of not-yet-downloaded ones).
+    catalog: () => ipcRenderer.invoke("models:catalog"),
+    download: (id) => ipcRenderer.invoke("models:download", id),
+    cancelDownload: () => ipcRenderer.send("models:download-cancel"),
+    onDownloadProgress: (cb) => ipcRenderer.on("models:download-progress", (_e, p) => cb(p)),
   },
   onToken: (cb) => ipcRenderer.on("token", (_e, t) => cb(t)),
   onStatus: (cb) => ipcRenderer.on("status", (_e, s) => cb(s)),

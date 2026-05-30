@@ -365,6 +365,24 @@
     .badge.accettabile { background: #33280a; color: #e0b352; border: 1px solid #6b5417; }
     .badge.lento { background: #331010; color: #e06b6b; border: 1px solid #6b2424; }
     .badge.now { background: var(--orange); color: #1a0d02; border: 1px solid var(--orange); }
+    /* Download of an extra model from the MODEL panel */
+    .dl-head { font-family: ui-monospace, monospace; font-size: .74rem; letter-spacing: .08em; text-transform: uppercase;
+               color: var(--muted); margin: 1.1rem 0 .5rem; padding-left: .7rem; border-left: 2px solid var(--orange-dim); }
+    .mrow.dlrow { display: block; cursor: default; }
+    .mrow.dlrow:hover { border-color: var(--line); border-left-color: var(--line); background: #0e1014; }
+    .mrow.dlrow .mname { margin-bottom: .15rem; }
+    .dl-btn { font-family: ui-monospace, monospace; font-size: .74rem; padding: .35rem .7rem; cursor: pointer;
+              background: var(--orange); color: #1a0d02; border: 1px solid var(--orange); white-space: nowrap; }
+    .dl-btn:hover { background: #ff8c33; }
+    .dl-btn[disabled], .dl-btn.busy { opacity: .5; cursor: default; pointer-events: none; }
+    .dl-prog { margin-top: .5rem; }
+    .dl-bar { height: 8px; background: #0a0b0d; border: 1px solid var(--line); }
+    .dl-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--orange-dim), var(--orange)); transition: width .2s; }
+    .dl-row2 { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .25rem; }
+    .dl-stat { font-family: ui-monospace, monospace; font-size: .72rem; color: var(--muted); }
+    .dl-cancel { font-family: ui-monospace, monospace; font-size: .72rem; color: var(--muted); background: none;
+                 border: 0; cursor: pointer; text-decoration: underline; }
+    .dl-cancel:hover { color: var(--orange); }
 
     /* First-run setup (on-demand asset download) */
     #setup { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
@@ -895,6 +913,8 @@
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
         vramLine: (free, total, pct) => `VRAM: <b>${free} GB liberi</b> su ${total} GB · ${pct}% in uso`,
         badgeInUse: "in uso",
+        modelsDownloadMore: "Scarica e usa un altro modello",
+        modelsDownload: "Scarica",
         rating: { veloce: "veloce", accettabile: "accettabile", lento: "lento" },
         errCap: "Errore", errLow: "errore",
         setupTitle: "PRIMO <b>AVVIO</b>",
@@ -953,6 +973,8 @@
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,
         vramLine: (free, total, pct) => `VRAM: <b>${free} GB free</b> of ${total} GB · ${pct}% in use`,
         badgeInUse: "in use",
+        modelsDownloadMore: "Download & use another model",
+        modelsDownload: "Download",
         rating: { veloce: "fast", accettabile: "acceptable", lento: "slow" },
         errCap: "Error", errLow: "error",
         setupTitle: "FIRST <b>RUN</b>",
@@ -1086,6 +1108,62 @@
       if (r.error) { modelsList.innerHTML = `<div class="mmeta meta-warn">${L.errCap}: ${esc(r.error)}</div>`; return; }
       modelsList.innerHTML = "";
       (r.models || []).forEach((m) => modelsList.appendChild(modelRow(m)));
+      await appendDownloadable();   // models still to download (packaged only)
+    }
+
+    // Lists catalog models not yet on disk, each with a download button.
+    async function appendDownloadable() {
+      let cat;
+      try { cat = await capsuleers.models.catalog(); } catch { return; }
+      if (!cat?.available || !cat.models?.length) return;
+      const head = document.createElement("div");
+      head.className = "dl-head"; head.textContent = L.modelsDownloadMore;
+      modelsList.appendChild(head);
+      for (const m of cat.models) modelsList.appendChild(dlRow(m));
+    }
+
+    function dlRow(m) {
+      const row = document.createElement("div");
+      row.className = "mrow dlrow";
+      const reco = (SYS_LANG === "it" && m.recommended) ? `<div class="mmeta">${esc(m.recommended)}</div>` : "";
+      row.innerHTML =
+        `<div class="mname">${esc(m.label)}</div>` + reco +
+        `<div class="dl-row2"><span class="mmeta">${m.sizeGB} GB · ${esc(m.quant)}</span>` +
+        `<button class="dl-btn">${L.modelsDownload} · ${m.sizeGB} GB</button></div>` +
+        `<div class="dl-prog" hidden><div class="dl-bar"><i></i></div>` +
+        `<div class="dl-row2"><span class="dl-stat"></span><button class="dl-cancel">${L.setupCancel}</button></div></div>`;
+      row.querySelector(".dl-btn").addEventListener("click", () => startModelDownload(m, row));
+      row.querySelector(".dl-cancel").addEventListener("click", () => capsuleers.models.cancelDownload());
+      return row;
+    }
+
+    let dlActive = null;  // { bar, stat } of the row currently downloading
+    capsuleers.models.onDownloadProgress((p) => {
+      if (!dlActive) return;
+      const pct = p.total ? Math.min(100, Math.round(p.received / p.total * 100)) : 0;
+      dlActive.bar.style.width = pct + "%";
+      dlActive.stat.textContent = `${pct}% · ${(p.received / 1e9).toFixed(1)}/${(p.total / 1e9).toFixed(1)} GB`
+        + (p.speed ? ` · ${(p.speed / 1e6).toFixed(1)} MB/s` : "");
+    });
+
+    async function startModelDownload(m, row) {
+      if (switching || dlActive) return;
+      const btnRow = row.querySelector(".dl-row2");
+      const prog = row.querySelector(".dl-prog");
+      btnRow.hidden = true; prog.hidden = false;
+      dlActive = { bar: row.querySelector(".dl-bar i"), stat: row.querySelector(".dl-stat") };
+      dlActive.stat.textContent = "…";
+      document.querySelectorAll(".dl-btn, .mrow:not(.dlrow)").forEach((el) => el.classList.add("busy"));
+      q.disabled = true; send.disabled = true;
+      const res = await capsuleers.models.download(m.id);
+      dlActive = null;
+      q.disabled = false; send.disabled = false;
+      document.querySelectorAll(".busy").forEach((el) => el.classList.remove("busy"));
+      if (res?.error && !res.aborted) {
+        prog.querySelector(".dl-stat").innerHTML = `<span class="meta-warn">${L.errLow}: ${esc(res.error)}</span>`;
+        return;
+      }
+      await loadModels();  // success → model installed & now current; aborted → keep .part, refresh
     }
 
     async function selectModel(m, row) {
