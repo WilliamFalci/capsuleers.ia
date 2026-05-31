@@ -38,7 +38,7 @@ export function configurePaths({ modelsDir, dataDir } = {}) {
   if (dataDir) { fitDataDir(dataDir); pricesDataDir(dataDir); linksDataDir(dataDir); }
 }
 
-const DIM = 1024, TOP_K = 8, MAX_CONTEXT_CHARS = 4800;
+const DIM = 1024, TOP_K = 12, MAX_CONTEXT_CHARS = 6000;
 // Min cosine similarity (new question vs the previous one) to consider the prior
 // turn relevant and include it as context. Too much history confuses the model, so
 // we keep at most ONE turn, and only when it's actually on-topic.
