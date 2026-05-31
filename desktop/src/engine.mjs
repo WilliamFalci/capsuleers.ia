@@ -75,7 +75,7 @@ export function checkIndexCompat({ vecBytes, metaCount, sidecar } = {}) {
 }
 // Reduced chat context: less KV cache → ~2-4GB models fit (almost) entirely in GPU
 // even with other apps using VRAM. createChatContext() shrinks further if needed.
-const CHAT_CTX = 2560;
+const CHAT_CTX = 4096;
 
 const SYSTEM = `Sei un assistente esperto di EVE Online. Rispondi usando SOLO il CONTESTO fornito.
 - LINGUA: rispondi SEMPRE nella stessa lingua della DOMANDA. Se la domanda è in italiano, l'INTERA risposta è in italiano, anche se le fonti sono in inglese. Non cambiare lingua a metà.
@@ -158,7 +158,7 @@ export async function shutdown() {
 // doesn't fit (InsufficientMemoryError, typical when other apps occupy the GPU),
 // it retries with progressively smaller contexts instead of failing outright.
 async function createChatContext(size = CHAT_CTX) {
-  const ladder = [...new Set([size, 2048, 1536, 1024])]
+  const ladder = [...new Set([size, 3072, 2560, 2048, 1536, 1024])]
     .filter((s) => s <= size).sort((a, b) => b - a);
   let lastErr;
   for (const contextSize of ladder) {
@@ -637,7 +637,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     let related = false;
     try { related = cosine(vector, (await embedCtx.getEmbeddingFor(prev.q)).vector) >= HIST_SIM; }
     catch { related = false; }
-    if (related) histText = `Conversazione precedente (contesto pertinente):\nD: ${prev.q}\nR: ${prev.a}\n\n`;
+    // Truncate the previous answer: it's just context, and a full long answer
+    // would bloat the prompt and eat into the generation budget.
+    if (related) histText = `Conversazione precedente (contesto pertinente):\nD: ${prev.q}\nR: ${prev.a.slice(0, 600)}\n\n`;
   }
   // Live data (EVE-Scout/ESI/killboard/prices) goes INSIDE the CONTEXT, marked as
   // authoritative: the SYSTEM prompt says to answer using only the CONTEXT, so if
@@ -671,8 +673,11 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const session = new LlamaChatSession({ contextSequence: ctx.getSequence(), systemPrompt: isFit ? SYSTEM_FIT : SYSTEM });
   let answer = "";
   try {
+    // High cap so answers finish at EOS instead of being cut mid-sentence; the
+    // 4096 context leaves room for prompt + a long answer. (No real Q&A answer
+    // reaches this, so it effectively means "generate until complete".)
     await session.prompt(userMsg, {
-      maxTokens: 450, temperature: 0.2,
+      maxTokens: 1600, temperature: 0.2,
       signal: activeAbort.signal,
       onTextChunk: (t) => { answer += t; onToken(t); },
     });
