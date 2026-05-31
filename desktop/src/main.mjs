@@ -108,6 +108,7 @@ function createWindow() {
   win.loadFile(path.join(HERE, "renderer", "index.html"));
   win.on("maximize", () => win.webContents.send("win:state", true));
   win.on("unmaximize", () => win.webContents.send("win:state", false));
+  win.on("focus", () => { try { win.flashFrame(false); } catch { /* noop */ } });
 
   // External links (wiki sources, capsuleers.app) open in the system browser,
   // not inside the app.
@@ -196,22 +197,20 @@ async function toggleClipboardWatch() {
   refreshTrayMenu();
 }
 
-// System notification: a Local was detected; clicking it confirms.
+// A Local was detected: notify via OS toast (click → confirm), flash the taskbar,
+// and ALSO show an in-app banner. Toasts can silently fail on Windows (Focus
+// Assist, settings…), so the in-app banner is the reliable path: it's waiting when
+// the user switches back to the app.
 function onLocalDetected(names) {
   pendingLocal = names;
   if (Notification.isSupported()) {
     const m = M();
-    const n = new Notification({
-      title: m.notifTitle,
-      body: m.notifBody(names.length),
-      silent: false,
-    });
+    const n = new Notification({ title: m.notifTitle, body: m.notifBody(names.length), silent: false });
     n.on("click", () => confirmLocalIntel(names));
     n.show();
-  } else {
-    // Fallback: bring the window forward and ask there.
-    confirmLocalIntel(names);
   }
+  try { if (!win?.isFocused()) win?.flashFrame(true); } catch { /* best-effort */ }
+  if (!win?.isDestroyed()) win.webContents.send("local:detected", { count: names.length });
 }
 
 // Explicit confirmation (popup) and start of intel resolution.
@@ -359,6 +358,10 @@ async function startEngine() {
 }
 
 app.whenReady().then(async () => {
+  // Windows: without a matching AppUserModelID the OS silently drops our toast
+  // notifications (so the "Local detected" prompt never appears). Must match the
+  // electron-builder appId + the NSIS Start-Menu shortcut.
+  app.setAppUserModelId("com.capsuleers.ia");
   Menu.setApplicationMenu(null);  // removes the File/Edit/View… menu
   await setupAssetDirs();
   createWindow();

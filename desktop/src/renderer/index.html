@@ -364,6 +364,17 @@
             color: var(--muted); font-size: 1rem; padding: .2rem .35rem; line-height: 1; }
     .mdel:hover { color: #e06b6b; }
     .mdel-actions { display: flex; gap: .5rem; align-items: center; }
+    /* In-app "Local detected" banner */
+    #local-banner { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); z-index: 80;
+      display: flex; align-items: center; gap: .8rem; padding: .5rem .5rem .5rem .9rem;
+      background: linear-gradient(180deg, #1a130a, #120c06); border: 1px solid var(--orange);
+      box-shadow: 0 6px 24px rgba(0,0,0,.55); font-size: .85rem; color: var(--text); }
+    #local-banner[hidden] { display: none; }
+    #local-banner .lb-btn { font-family: ui-monospace, monospace; font-size: .76rem; padding: .3rem .7rem;
+      background: var(--orange); color: #1a0d02; border: 1px solid var(--orange); cursor: pointer; white-space: nowrap; }
+    #local-banner .lb-btn:hover { background: #ff8c33; }
+    #local-banner .lb-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: .85rem; padding: .2rem .3rem; }
+    #local-banner .lb-x:hover { color: var(--orange); }
     .mrow .meta-eta { font-size: 1.02rem; font-weight: 700; color: var(--text); }
     .mrow .meta-tps { font-size: .72rem; color: var(--muted); }
     .badge { display: inline-block; font-family: ui-monospace, monospace; font-size: .66rem; letter-spacing: .08em;
@@ -464,6 +475,13 @@
   </header>
 
   <!-- Mini-mode: always-on-top icon; click to expand -->
+  <!-- In-app banner when a Local is detected in the clipboard (reliable fallback to the OS toast) -->
+  <div id="local-banner" hidden>
+    <span id="local-banner-text"></span>
+    <button id="local-banner-show" class="lb-btn"></button>
+    <button id="local-banner-x" class="lb-x" title="✕">&#x2715;</button>
+  </div>
+
   <div id="mini">
     <img src="../../assets/icon-256.png" alt="Capsuleers.IA" data-i18n-title="miniExpand" />
   </div>
@@ -597,6 +615,18 @@
     }
     localBtn.addEventListener("click", async () => { await capsuleers.local.toggle(); refreshLocalBtn(); });
     refreshLocalBtn();
+
+    // In-app banner when a Local is detected (reliable even if the OS toast is missed).
+    const localBanner = document.getElementById("local-banner");
+    const hideLocalBanner = () => { localBanner.hidden = true; };
+    capsuleers.local.onDetected(({ count }) => {
+      document.getElementById("local-banner-text").textContent = L.localDetected(count);
+      document.getElementById("local-banner-show").textContent = L.localShowIntel;
+      localBanner.hidden = false;
+    });
+    document.getElementById("local-banner-show").addEventListener("click", () => { hideLocalBanner(); capsuleers.local.confirm(); });
+    document.getElementById("local-banner-x").addEventListener("click", hideLocalBanner);
+    capsuleers.local.onStart(hideLocalBanner);  // intel resolution started → hide the banner
 
     const HOT_FLAGS = /^(capital|FC:|bait)/;
     function localRow(r) {
@@ -903,6 +933,8 @@
         btnSend: "Invia",
         localOn: "Ascolto appunti ATTIVO — copia la Local da EVE. Click per disattivare.",
         localOff: "Intel Local da appunti (spento) — click per attivare",
+        localDetected: (n) => `Rilevata Local di ${n} piloti negli appunti`,
+        localShowIntel: "Mostra intel",
         danger: ["sconosciuto", "basso", "medio", "alto"],
         intelDetail: "Dettaglio intel", notFound: "non trovato",
         killAbbr: "K", lossAbbr: "P",
@@ -966,6 +998,8 @@
         btnSend: "Send",
         localOn: "Clipboard watch ON — copy the Local from EVE. Click to disable.",
         localOff: "Local intel from clipboard (off) — click to enable",
+        localDetected: (n) => `Detected a Local of ${n} pilots in the clipboard`,
+        localShowIntel: "Show intel",
         danger: ["unknown", "low", "medium", "high"],
         intelDetail: "Intel details", notFound: "not found",
         killAbbr: "K", lossAbbr: "L",
