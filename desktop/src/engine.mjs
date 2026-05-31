@@ -39,6 +39,17 @@ export function configurePaths({ modelsDir, dataDir } = {}) {
 }
 
 const DIM = 1024, TOP_K = 8, MAX_CONTEXT_CHARS = 4800;
+// Min cosine similarity (new question vs the previous one) to consider the prior
+// turn relevant and include it as context. Too much history confuses the model, so
+// we keep at most ONE turn, and only when it's actually on-topic.
+const HIST_SIM = 0.5;
+
+// Cosine similarity between two embedding vectors.
+function cosine(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
+}
 const EXPECTED_EMBED = "bge-m3";  // the index MUST have been built with this embedder
 
 /**
@@ -164,7 +175,7 @@ async function createChatContext(size = CHAT_CTX) {
 // Rewrites a follow-up into a standalone question using the history (for retrieval).
 async function condense(question) {
   if (history.length === 0) return question;
-  const h = history.slice(-3).map((t) => `Utente: ${t.q}\nAssistente: ${t.a}`).join("\n");
+  const h = history.slice(-1).map((t) => `Utente: ${t.q}\nAssistente: ${t.a}`).join("\n");
   const ctx = await createChatContext(1536);
   activeCtx = ctx;
   activeAbort = new AbortController();
@@ -618,9 +629,16 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     context += block + "\n\n---\n\n"; used += block.length;
   }
 
-  const histText = history.length
-    ? "Conversazione precedente:\n" + history.slice(-2).map((t) => `D: ${t.q}\nR: ${t.a}`).join("\n") + "\n\n"
-    : "";
+  // At most the LAST turn, and only if it's actually relevant to the new question
+  // (embedding similarity). Irrelevant history makes the model misread the prompt.
+  let histText = "";
+  if (history.length) {
+    const prev = history[history.length - 1];
+    let related = false;
+    try { related = cosine(vector, (await embedCtx.getEmbeddingFor(prev.q)).vector) >= HIST_SIM; }
+    catch { related = false; }
+    if (related) histText = `Conversazione precedente (contesto pertinente):\nD: ${prev.q}\nR: ${prev.a}\n\n`;
+  }
   // Live data (EVE-Scout/ESI/killboard/prices) goes INSIDE the CONTEXT, marked as
   // authoritative: the SYSTEM prompt says to answer using only the CONTEXT, so if
   // these blocks sit outside it the model ignores them and says "no info" even when
