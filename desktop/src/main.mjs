@@ -102,7 +102,9 @@ function createWindow() {
     icon: path.join(ASSETS, "icon-256.png"),
     frame: false,                 // no OS title bar/chrome
     backgroundColor: "#0a0b0d",   // avoid the white flash at startup
-    webPreferences: { preload: path.join(HERE, "preload.cjs") },
+    // backgroundThrottling off: while you game (app in the background, maybe on
+    // another monitor) the renderer must keep reacting — the Local banner + sound.
+    webPreferences: { preload: path.join(HERE, "preload.cjs"), backgroundThrottling: false },
   });
   win.setAspectRatio(16 / 9);     // keep 16:9 while resizing
   win.loadFile(path.join(HERE, "renderer", "index.html"));

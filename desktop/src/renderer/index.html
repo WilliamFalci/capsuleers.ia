@@ -613,7 +613,29 @@
       localBtn.classList.toggle("active", on);
       localBtn.title = on ? L.localOn : L.localOff;
     }
-    localBtn.addEventListener("click", async () => { await capsuleers.local.toggle(); refreshLocalBtn(); });
+    // Audible cue for a detected Local: an app-played sound (not the OS toast,
+    // which Windows suppresses via Focus Assist while a game runs fullscreen), so
+    // you hear it even when gaming on another monitor. Primed on the toggle click
+    // (a user gesture) so the AudioContext is allowed to play later.
+    let _ac = null;
+    function primeAudio() { try { _ac = _ac || new (window.AudioContext || window.webkitAudioContext)(); if (_ac.state === "suspended") _ac.resume(); } catch { /* no audio */ } }
+    function localBeep() {
+      try {
+        primeAudio(); if (!_ac) return;
+        const t = _ac.currentTime;
+        for (const [i, f] of [[0, 880], [0.16, 1245]]) {  // two short rising tones
+          const o = _ac.createOscillator(), g = _ac.createGain();
+          o.type = "sine"; o.frequency.value = f;
+          g.gain.setValueAtTime(0.0001, t + i);
+          g.gain.exponentialRampToValueAtTime(0.3, t + i + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + i + 0.16);
+          o.connect(g).connect(_ac.destination);
+          o.start(t + i); o.stop(t + i + 0.17);
+        }
+      } catch { /* audio not available */ }
+    }
+
+    localBtn.addEventListener("click", async () => { primeAudio(); await capsuleers.local.toggle(); refreshLocalBtn(); });
     refreshLocalBtn();
 
     // In-app banner when a Local is detected (reliable even if the OS toast is missed).
@@ -623,6 +645,7 @@
       document.getElementById("local-banner-text").textContent = L.localDetected(count);
       document.getElementById("local-banner-show").textContent = L.localShowIntel;
       localBanner.hidden = false;
+      localBeep();
     });
     document.getElementById("local-banner-show").addEventListener("click", () => { hideLocalBanner(); capsuleers.local.confirm(); });
     document.getElementById("local-banner-x").addEventListener("click", hideLocalBanner);
