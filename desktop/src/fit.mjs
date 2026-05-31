@@ -8,7 +8,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const LOOKUP_PATH = path.resolve(HERE, "..", "data", "fit_lookup.json");
+// Data dir: defaults next to the module (dev: desktop/data); in the packaged app
+// the data lives in userData, so engine.configurePaths() points us there.
+let DATA_DIR = path.resolve(HERE, "..", "data");
+export function configureDataDir(dir) { if (dir) { DATA_DIR = dir; lookupCache = null; } }
 const HEADER = /^\[(.+?),\s*(.+?)\]$/;
 
 // Fitting skill bonuses at level V (community standard).
@@ -26,7 +29,7 @@ const DTYPES = ["em", "therm", "kin", "exp"];
 let lookupCache = null;
 async function loadLookup() {
   if (lookupCache) return lookupCache;
-  try { lookupCache = JSON.parse(await readFile(LOOKUP_PATH, "utf-8")); } catch { lookupCache = null; }
+  try { lookupCache = JSON.parse(await readFile(path.join(DATA_DIR, "fit_lookup.json"), "utf-8")); } catch { lookupCache = null; }
   return lookupCache;
 }
 

@@ -5,7 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const NAMES_PATH = path.resolve(HERE, "..", "data", "names_index.json");
+// Data dir: defaults next to the module (dev); the packaged app points us to userData.
+let DATA_DIR = path.resolve(HERE, "..", "data");
+export function configureDataDir(dir) { if (dir) { DATA_DIR = dir; names = null; } }
 
 // Path per language: localized Italian, otherwise English.
 const PATHS = {
@@ -19,12 +21,13 @@ function url(lang, kind, id) {
 
 let names = null;  // { name_lowercase: typeID }
 async function loadNames() {
-  if (!names) { try { names = JSON.parse(await readFile(NAMES_PATH, "utf-8")); } catch { names = {}; } }
+  if (!names) { try { names = JSON.parse(await readFile(path.join(DATA_DIR, "names_index.json"), "utf-8")); } catch { names = {}; } }
   return names;
 }
 
-/** Simple language detection (it vs en) from the text. */
-export function detectLang(text) {
+/** Simple language detection (it vs en) from the text. On a tie/undetermined
+ *  result it returns `fallback` (e.g. the system language) instead of always English. */
+export function detectLang(text, fallback = "en") {
   const t = text.toLowerCase();
   // STRONG markers of Italian: accented vowels (almost never in English) and
   // apostrophe elisions (l'/d'/un'/cos'/dell'…). They weigh more than function words.
@@ -33,7 +36,9 @@ export function detectLang(text) {
   // Unambiguous function words (excluding those ambiguous between the two languages: in, a, i, on).
   const it = accents * 3 + elisions * 2 + (t.match(/\b(di|che|chi|per|una|un|uno|sono|sei|hai|ho|della|dello|del|dei|degli|delle|il|la|le|gli|lo|con|non|come|cosa|cos|dove|quando|quali|qual|quale|quanto|nel|nella|piu|puo|mi|ci|ti|si|sai|dimmi|perche|sulla|sullo|questo|questa|quello|quella|anche|essere|fare|sta|milita|gioca|parlami|dammi|vorrei|tra|fra|ed)\b/g) || []).length;
   const en = (t.match(/\b(the|of|to|and|is|are|was|were|you|who|what|where|when|which|how|why|with|for|this|that|these|those|at|your|can|could|has|have|had|do|does|did|about|tell|please|give|show|it|its|they|their|there|my|an|will|would|should)\b/g) || []).length;
-  return it > en ? "it" : "en";  // tie/undetermined → en (English fallback)
+  if (it > en) return "it";
+  if (en > it) return "en";
+  return fallback;  // tie/undetermined → caller's fallback (system/conversation language)
 }
 
 // Applies a transformation only OUTSIDE the already-present markdown links.

@@ -4,12 +4,12 @@ import { getLlama, LlamaChatSession, readGgufFileInfo, GgufInsights } from "node
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { looksLikeFit, parseEft, describeFit } from "./fit.mjs";
-import { priceByName, isKnownType } from "./prices.mjs";
+import { looksLikeFit, parseEft, describeFit, configureDataDir as fitDataDir } from "./fit.mjs";
+import { priceByName, isKnownType, configureDataDir as pricesDataDir } from "./prices.mjs";
 import { intelFor } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
-import { linkify, detectLang } from "./links.mjs";
+import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -33,6 +33,9 @@ export function configurePaths({ modelsDir, dataDir } = {}) {
   if (dataDir) DATA = dataDir;
   EMBED_MODEL = path.join(MODELS_DIR, "bge-m3-Q8_0.gguf");
   MODEL_CHOICE_FILE = path.join(MODELS_DIR, ".selected-model");
+  // Sibling modules read their own lookup files (fit_lookup/names_index) from the
+  // SAME data dir — point them there too, or the packaged app looks inside app.asar.
+  if (dataDir) { fitDataDir(dataDir); pricesDataDir(dataDir); linksDataDir(dataDir); }
 }
 
 const DIM = 1024, TOP_K = 8, MAX_CONTEXT_CHARS = 4800;
@@ -70,6 +73,15 @@ const SYSTEM = `Sei un assistente esperto di EVE Online. Rispondi usando SOLO il
 - QUANTITÀ E NUMERI (tassativo): quando il contesto riporta quantità, prezzi, tempi, percentuali o livelli (es. "3× Capital Capacitor Battery", "200× Life Support Backup Unit", "skill ... 3", ISK, ore), riportali SEMPRE ed ESATTAMENTE come nel contesto, senza ometterli né arrotondarli. In una lista di materiali/requisiti METTI la quantità davanti a OGNI voce (es. "3× Capital Capacitor Battery", non "Capital Capacitor Battery"). Non aggiungere descrizioni inventate non presenti nel contesto.
 - Usa SOLO le informazioni nel contesto. Se non bastano, dillo ("Non ho questa informazione nelle fonti"); non inventare. Sii conciso e preciso.`;
 
+// System prompt for FIT analysis: unlike the strict factual one, theorycrafting
+// needs the model's general EVE knowledge. The computed stats stay authoritative.
+const SYSTEM_FIT = `Sei un esperto di fitting di EVE Online e stai analizzando un fit incollato dall'utente.
+- LINGUA: rispondi SEMPRE nella lingua indicata dalla direttiva finale. Non cambiare lingua a metà.
+- TERMINOLOGIA (tassativo): NON tradurre MAI i nomi di navi, moduli, skill e termini di gioco di EVE: restano ESATTAMENTE in inglese (es. "Damage Control II", "high slot", "Microwarpdrive").
+- I NUMERI dell'ANALISI DEL FIT (DPS, EHP, velocità, cap stability) sono AUTOREVOLI: riportali ESATTAMENTE come forniti, non inventarne altri né ricalcolarli.
+- Puoi usare la tua conoscenza generale di EVE per spiegare il RUOLO della nave e fare theorycrafting (a cosa serve il fit, PvP/PvE, punti di forza e debolezze, come si vola), ma sii accurato: se non sei certo, dillo.
+- Scrivi in modo CORRETTO, conciso e ben strutturato (usa i punti elenco richiesti dalla direttiva).`;
+
 // Explicit language directive, in the target language, to place AT THE END of the prompt
 // (maximum salience): it overrides the dominant language of the context (intel/ESI in IT).
 const LANG_DIRECTIVE = {
@@ -92,6 +104,7 @@ function expandQuery(q) {
 let llama, embedCtx, chatModel, index;
 let currentModelFile = null;  // file name (.gguf) of the chat model currently loaded
 let history = [];  // conversation: [{ q, a }] for follow-ups
+let convLang = null;  // language of the current conversation (so follow-ups don't flip)
 
 // In-flight generation: AbortController + active context. Needed to cancel
 // cleanly when the app closes while the model is still answering
@@ -99,10 +112,22 @@ let history = [];  // conversation: [{ q, a }] for follow-ups
 let activeAbort = null;
 let activeCtx = null;
 
-export function resetConversation() { history = []; }
+export function resetConversation() { history = []; convLang = null; }
 
 /** File (.gguf) of the chat model currently loaded (null if none). */
 export function currentModel() { return currentModelFile; }
+
+/** Delete a downloaded chat model from the models dir to free disk space. Refuses
+ *  the model in use and the embedding model. Works in dev and packaged (MODELS_DIR). */
+export async function deleteModelFile(file) {
+  if (!/^[^/\\]+\.gguf$/i.test(file || "") || /bge|embed/i.test(file)) return { error: "Modello non valido." };
+  if (file === currentModelFile) return { error: "Modello in uso: passa a un altro prima di eliminarlo." };
+  try {
+    await fs.promises.unlink(path.join(MODELS_DIR, file));
+    await fs.promises.unlink(path.join(MODELS_DIR, file + ".part")).catch(() => {});
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
+}
 
 // Cancels the generation currently in progress (if any). Returns a promise
 // that resolves once the generation has truly finished tearing down.
@@ -547,20 +572,22 @@ export async function init(onStatus = () => {}) {
 
 /** Answers the question; onToken(text) for streaming. Returns {answer, sources}. */
 export async function ask(question, onToken = () => {}, uiLang = null) {
-  // 1. Pasted EFT fit → analysis (All V validation) + estimated cost.
+  // 1. Pasted EFT fit → analysis (All V: validation, DPS/EHP/speed/cap, bonus usage).
   const isFit = looksLikeFit(question);
-  let fitInfo = "";
+  let fitInfo = "", fitShip = null;
   if (isFit) {
     const fit = parseEft(question);
     if (fit) {
+      fitShip = fit.ship;
       fitInfo = await describeFit(fit);
       const cost = await fitCost(fit);
       if (cost) fitInfo += "\n" + cost;
     }
   }
 
-  // 2. Follow-up: condense the question into standalone form for retrieval.
-  const standalone = await condense(question);
+  // 2. Retrieval query. For a fit, retrieve the SHIP doc (role/theorycrafting
+  //    context), NOT the EFT module list. Otherwise: condense the follow-up.
+  const standalone = (isFit && fitShip) ? `${fitShip} nave ruolo bonus` : await condense(question);
   const { vector } = await embedCtx.getEmbeddingFor(expandQuery(standalone));
   const hits = topK(vector);
 
@@ -571,10 +598,15 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const intel = await maybeIntel(question);  // { text, entities, kills }
   const esi = await maybeEsi(question);      // { text, entities } — official Fenris Creations data
   const scout = await maybeScout(question);  // { text, entities } — EVE-Scout connections
-  // Language of the QUESTION → answer + links. A pasted fit is all-English game
-  // terms, so detectLang would always say "en"; for a fit, follow the UI/system
-  // language instead (Italian system → Italian answer).
-  const qLang = (isFit && (uiLang === "it" || uiLang === "en")) ? uiLang : detectLang(question);
+  // Answer/link language. A pasted fit is all-English game terms (→ follow the
+  // system language). A follow-up keeps the conversation's language (so a short
+  // "elencale" after an Italian turn doesn't flip to English). First turn: detect,
+  // with the system language as the tie-breaker instead of always English.
+  const sysFb = (uiLang === "it" || uiLang === "en") ? uiLang : "en";
+  const qLang = isFit ? sysFb
+    : (convLang && history.length) ? convLang
+    : detectLang(question, sysFb);
+  convLang = qLang;
 
   // 4. Context from the retrieved documents.
   let context = "", used = 0;
@@ -587,14 +619,24 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const histText = history.length
     ? "Conversazione precedente:\n" + history.slice(-2).map((t) => `D: ${t.q}\nR: ${t.a}`).join("\n") + "\n\n"
     : "";
-  const userMsg = `${histText}CONTESTO:\n${context}\n`
-    + (fitInfo ? `FIT ANALIZZATO:\n${fitInfo}\n` : "")
-    + (intel.text ? intel.text + "\n" : "")
-    + (esi.text ? esi.text + "\n" : "")
-    + (scout.text ? scout.text + "\n" : "")
-    + (totalCost ? totalCost + "\n" : "")
-    + (priceInfo ? priceInfo + "\n" : "")
-    + `DOMANDA: ${question}\n\n${LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en}`;
+  // Live data (EVE-Scout/ESI/killboard/prices) goes INSIDE the CONTEXT, marked as
+  // authoritative: the SYSTEM prompt says to answer using only the CONTEXT, so if
+  // these blocks sit outside it the model ignores them and says "no info" even when
+  // the data is right there. A final directive (highest salience) reinforces it.
+  const liveIntel = [intel.text, esi.text, scout.text, totalCost, priceInfo].filter(Boolean).join("\n\n");
+  const liveDirective = !liveIntel ? "" : qLang === "it"
+    ? "\nIMPORTANTE: il CONTESTO include DATI LIVE autorevoli (EVE-Scout/ESI/killboard/prezzi): rispondi usandoli, NON dire che l'informazione manca."
+    : "\nIMPORTANT: the CONTEXT includes authoritative LIVE DATA (EVE-Scout/ESI/killboard/prices): answer using it, do NOT say the information is missing.";
+  // A fit comes with authoritative computed stats; instruct the model to present
+  // them and reason about the build instead of just describing a random module.
+  const fitDirective = !fitInfo ? "" : qLang === "it"
+    ? `\nQuesto è un FIT. Struttura la risposta così, basandoti sull'ANALISI DEL FIT qui sopra (dati autorevoli, NON reinventarli):\n1) **DPS**, **Tank (EHP)**, **Velocità**, **Cap stability** (riporta i numeri).\n2) **Bonus nave**: se il fit sfrutta o no i bonus della nave, e perché.\n3) **Theorycrafting**: a cosa serve questa nave con questo fit (ruolo, PvP/PvE, punti di forza e debolezze, come si usa). Usa la tua conoscenza della nave.`
+    : `\nThis is a FIT. Structure the answer like this, based on the FIT ANALYSIS above (authoritative data, do NOT make it up):\n1) **DPS**, **Tank (EHP)**, **Speed**, **Cap stability** (report the numbers).\n2) **Ship bonuses**: whether the fit uses the ship's bonuses, and why.\n3) **Theorycrafting**: what this ship is for with this fit (role, PvP/PvE, strengths and weaknesses, how to fly it). Use your knowledge of the ship.`;
+  const userMsg = `${histText}CONTESTO:\n`
+    + (liveIntel ? `[DATI LIVE]\n${liveIntel}\n\n` : "")
+    + (fitInfo ? `[ANALISI DEL FIT — dati autorevoli]\n${fitInfo}\n\n` : "")
+    + `${context}\n`
+    + `DOMANDA: ${question}\n\n${(LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en)}${liveDirective}${fitDirective}`;
 
   // 5. Generation (GPU, streaming). Cancelable via AbortSignal: if the app closes
   //    while the model is answering, cancel() interrupts the prompt and here we dispose
@@ -602,7 +644,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const ctx = await createChatContext(CHAT_CTX);
   activeCtx = ctx;
   activeAbort = new AbortController();
-  const session = new LlamaChatSession({ contextSequence: ctx.getSequence(), systemPrompt: SYSTEM });
+  const session = new LlamaChatSession({ contextSequence: ctx.getSequence(), systemPrompt: isFit ? SYSTEM_FIT : SYSTEM });
   let answer = "";
   try {
     await session.prompt(userMsg, {

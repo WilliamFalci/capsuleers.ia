@@ -5,14 +5,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const NAMES_PATH = path.resolve(HERE, "..", "data", "names_index.json");
+// Data dir: defaults next to the module (dev); the packaged app points us to userData.
+let DATA_DIR = path.resolve(HERE, "..", "data");
+export function configureDataDir(dir) { if (dir) { DATA_DIR = dir; namesIndex = null; } }
 const PRICES_URL = "https://data.everef.net/markets-prices/markets-prices-latest.json";
 const TTL = 3600 * 1000;
 
 let namesIndex = null, pricesCache = null;
 
 async function loadNames() {
-  if (!namesIndex) namesIndex = JSON.parse(await readFile(NAMES_PATH, "utf-8"));
+  if (!namesIndex) namesIndex = JSON.parse(await readFile(path.join(DATA_DIR, "names_index.json"), "utf-8"));
   return namesIndex;
 }
 
