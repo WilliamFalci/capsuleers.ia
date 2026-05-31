@@ -12,20 +12,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveHfAsset } from "../src/assets.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, "..", "src");
 const manifest = JSON.parse(fs.readFileSync(path.join(SRC, "assets-manifest.json"), "utf-8"));
 const catalog = JSON.parse(fs.readFileSync(path.join(SRC, "models-catalog.json"), "utf-8"));
 
+// Reuse the app's HuggingFace resolver (the load-bearing "lfs.oid = sha256" logic).
 async function hfFile(repo, file) {
-  const api = `https://huggingface.co/api/models/${repo}/tree/main?recursive=1`;
-  const res = await fetch(api, { headers: { "User-Agent": "capsuleers-validate-hf" } });
-  if (res.status === 404) return { error: "repo not found (404)" };
-  if (!res.ok) return { error: `HTTP ${res.status}` };
-  const entry = (await res.json()).find((e) => e.path === file);
-  if (!entry) return { error: "file not present in repo" };
-  return { sha: entry.lfs?.oid || null, size: entry.lfs?.size ?? entry.size ?? null };
+  try { const { sha256, size } = await resolveHfAsset(repo, file); return { sha: sha256, size }; }
+  catch (e) { return { error: e.message }; }
 }
 
 function parseHfUrl(url) {

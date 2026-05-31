@@ -321,12 +321,9 @@ async function maybeScout(question) {
   const opts = {};
   const nm = q.match(/\b(?:vicin\w*\s+(?:a|ad|all[ao'’]?)|closest\s+to|nearest(?:\s+to)?|near(?:\s+to)?|from)\s+([A-Za-z][\w'’\- ]+?)(?=[?.!,]|$)/i);
   const ref = nm ? _cleanName(nm[1]) : null;
-  // Direction → which signature to show:
-  //  • toward Thera (reference = k-space system, e.g. Jita): in_signature ("in-sig")
-  //  • outbound from Thera (reference = Thera, or the word "uscita/exit"): out_signature ("out-sig")
-  if (ref && !/^(thera|turnur)$/i.test(ref)) { opts.near = ref; opts.sig = "in"; }
-  else if (ref && /^(thera|turnur)$/i.test(ref)) opts.sig = "out";
-  if (!opts.sig && /\b(usc|esco|esci|escono|exit|leave|out[\s-]?sig|outbound)/i.test(q)) opts.sig = "out";
+  // Proximity reference (a k-space system, not Thera/Turnur itself) → sort connections
+  // by distance from it. (fmtSig always shows both signatures, so no direction flag.)
+  if (ref && !/^(thera|turnur)$/i.test(ref)) opts.near = ref;
 
   // Intent: a "connection" word OR a proximity request (in EVE
   // "the Thera closest to X" means the Thera connection closest to X).
@@ -617,7 +614,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // with the system language as the tie-breaker instead of always English.
   const sysFb = (uiLang === "it" || uiLang === "en") ? uiLang : "en";
   const qLang = isFit ? sysFb
-    : (convLang && history.length) ? convLang
+    : convLang ? convLang          // a follow-up keeps the conversation's language
     : detectLang(question, sysFb);
   convLang = qLang;
 
@@ -634,9 +631,8 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   let histText = "";
   if (history.length) {
     const prev = history[history.length - 1];
-    let related = false;
-    try { related = cosine(vector, (await embedCtx.getEmbeddingFor(prev.q)).vector) >= HIST_SIM; }
-    catch { related = false; }
+    // Reuse the previous turn's cached query embedding — no extra embed call.
+    const related = prev.vec ? cosine(vector, prev.vec) >= HIST_SIM : false;
     // Truncate the previous answer: it's just context, and a full long answer
     // would bloat the prompt and eat into the generation budget.
     if (related) histText = `Conversazione precedente (contesto pertinente):\nD: ${prev.q}\nR: ${prev.a.slice(0, 600)}\n\n`;
@@ -646,23 +642,25 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // these blocks sit outside it the model ignores them and says "no info" even when
   // the data is right there. A final directive (highest salience) reinforces it.
   const liveIntel = [intel.text, esi.text, scout.text, totalCost, priceInfo].filter(Boolean).join("\n\n");
-  const liveDirective = !liveIntel ? "" : qLang === "it"
-    ? "\nIMPORTANTE: il CONTESTO include DATI LIVE autorevoli (EVE-Scout/ESI/killboard/prezzi): rispondi usandoli, NON dire che l'informazione manca."
-    : "\nIMPORTANT: the CONTEXT includes authoritative LIVE DATA (EVE-Scout/ESI/killboard/prices): answer using it, do NOT say the information is missing.";
-  // For a Thera/Turnur connection, always surface BOTH wormhole signatures.
-  const scoutDirective = !scout.text ? "" : qLang === "it"
-    ? "\nPer un collegamento Thera/Turnur indica SEMPRE entrambe le signature: quella di ENTRATA (da scansionare nel sistema k-space) e quella di USCITA (da scansionare in Thera/Turnur). Se i dati EVE-Scout contengono un AVVISO (⚠, es. il riferimento è una regione/costellazione e non un sistema), riportalo chiaramente all'utente."
-    : "\nFor a Thera/Turnur connection ALWAYS give both wormhole signatures: the ENTRY one (to scan in the k-space system) and the EXIT one (to scan in Thera/Turnur). If the EVE-Scout data contains a WARNING (⚠, e.g. the reference is a region/constellation, not a system), relay it clearly to the user.";
-  // A fit comes with authoritative computed stats; instruct the model to present
-  // them and reason about the build instead of just describing a random module.
-  const fitDirective = !fitInfo ? "" : qLang === "it"
-    ? `\nQuesto è un FIT. Struttura la risposta così, basandoti sull'ANALISI DEL FIT qui sopra (dati autorevoli, NON reinventarli):\n1) **DPS**, **Tank (EHP)**, **Velocità**, **Cap stability** (riporta i numeri).\n2) **Bonus nave**: se il fit sfrutta o no i bonus della nave, e perché.\n3) **Theorycrafting**: a cosa serve questa nave con questo fit (ruolo, PvP/PvE, punti di forza e debolezze, come si usa). Usa la tua conoscenza della nave.`
-    : `\nThis is a FIT. Structure the answer like this, based on the FIT ANALYSIS above (authoritative data, do NOT make it up):\n1) **DPS**, **Tank (EHP)**, **Speed**, **Cap stability** (report the numbers).\n2) **Ship bonuses**: whether the fit uses the ship's bonuses, and why.\n3) **Theorycrafting**: what this ship is for with this fit (role, PvP/PvE, strengths and weaknesses, how to fly it). Use your knowledge of the ship.`;
+  // End-of-prompt directives (highest salience), one per active source. Gating +
+  // IT/EN text live together, so adding a source is one row here.
+  const directives = [
+    { on: !!liveIntel,
+      it: "\nIMPORTANTE: il CONTESTO include DATI LIVE autorevoli (EVE-Scout/ESI/killboard/prezzi): rispondi usandoli, NON dire che l'informazione manca.",
+      en: "\nIMPORTANT: the CONTEXT includes authoritative LIVE DATA (EVE-Scout/ESI/killboard/prices): answer using it, do NOT say the information is missing." },
+    { on: !!scout.text,
+      it: "\nPer un collegamento Thera/Turnur indica SEMPRE entrambe le signature: quella di ENTRATA (da scansionare nel sistema k-space) e quella di USCITA (da scansionare in Thera/Turnur). Se i dati EVE-Scout contengono un AVVISO (⚠, es. il riferimento è una regione/costellazione e non un sistema), riportalo chiaramente all'utente.",
+      en: "\nFor a Thera/Turnur connection ALWAYS give both wormhole signatures: the ENTRY one (to scan in the k-space system) and the EXIT one (to scan in Thera/Turnur). If the EVE-Scout data contains a WARNING (⚠, e.g. the reference is a region/constellation, not a system), relay it clearly to the user." },
+    { on: !!fitInfo,
+      it: `\nQuesto è un FIT. Struttura la risposta così, basandoti sull'ANALISI DEL FIT qui sopra (dati autorevoli, NON reinventarli):\n1) **DPS**, **Tank (EHP)**, **Velocità**, **Cap stability** (riporta i numeri).\n2) **Bonus nave**: se il fit sfrutta o no i bonus della nave, e perché.\n3) **Theorycrafting**: a cosa serve questa nave con questo fit (ruolo, PvP/PvE, punti di forza e debolezze, come si usa). Usa la tua conoscenza della nave.`,
+      en: `\nThis is a FIT. Structure the answer like this, based on the FIT ANALYSIS above (authoritative data, do NOT make it up):\n1) **DPS**, **Tank (EHP)**, **Speed**, **Cap stability** (report the numbers).\n2) **Ship bonuses**: whether the fit uses the ship's bonuses, and why.\n3) **Theorycrafting**: what this ship is for with this fit (role, PvP/PvE, strengths and weaknesses, how to fly it). Use your knowledge of the ship.` },
+  ];
+  const directiveText = directives.filter((d) => d.on).map((d) => (qLang === "it" ? d.it : d.en)).join("");
   const userMsg = `${histText}CONTESTO:\n`
     + (liveIntel ? `[DATI LIVE]\n${liveIntel}\n\n` : "")
     + (fitInfo ? `[ANALISI DEL FIT — dati autorevoli]\n${fitInfo}\n\n` : "")
     + `${context}\n`
-    + `DOMANDA: ${question}\n\n${(LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en)}${liveDirective}${scoutDirective}${fitDirective}`;
+    + `DOMANDA: ${question}\n\n${(LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en)}${directiveText}`;
 
   // 5. Generation (GPU, streaming). Cancelable via AbortSignal: if the app closes
   //    while the model is answering, cancel() interrupts the prompt and here we dispose
@@ -691,7 +689,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   }
 
   // 6. History (plain text for follow-ups) + linkification for the UI.
-  history.push({ q: question, a: answer });
+  history.push({ q: question, a: answer, vec: vector });  // vec → next turn's relevance check
   if (history.length > 6) history.shift();
   const linked = await linkify(answer, { lang: qLang, entities: [...intel.entities, ...esi.entities] });
 

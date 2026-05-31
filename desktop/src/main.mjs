@@ -306,7 +306,7 @@ async function setupInfo() {
     id: m.id, label: m.label, sizeGB: m.sizeGB, paramsB: m.paramsB, quant: m.quant,
     recommended: m.recommended || "", default: !!m.default, installed: installed.has(m.id),
   }));
-  return { needed: !status.firstRunReady, status, baseBytes, models };
+  return { needed: !status.firstRunReady, baseBytes, models };  // status is internal
 }
 
 // Rough VRAM fit for a not-yet-downloaded model (size + ~1GB context vs free VRAM).

@@ -59,7 +59,7 @@ export async function loadCatalog({ signal } = {}) {
 
 // Resolve a model's exact download URL, SHA256 and size live from HuggingFace
 // (the LFS oid IS the content's sha256). No checksum maintenance in the catalog.
-async function resolveHfAsset(repo, file, signal) {
+export async function resolveHfAsset(repo, file, signal) {
   const api = `https://huggingface.co/api/models/${repo}/tree/main?recursive=1`;
   const res = await fetch(api, { signal, headers: { "User-Agent": "Capsuleers.IA" } });
   if (!res.ok) throw new Error(`HuggingFace ${res.status} per ${repo}`);
@@ -124,8 +124,8 @@ export function assetStatus({ modelsDir, dataDir, manifest = loadManifest() }) {
  */
 export async function firstRunTasks({ modelsDir, dataDir, modelEntry, manifest = loadManifest(), signal }) {
   const tasks = [];
-  if (!sizeMatches(path.join(modelsDir, manifest.embedding.filename), manifest.embedding.size))
-    tasks.push(embeddingTask(manifest, modelsDir));
+  const emb = embeddingTask(manifest, modelsDir);
+  if (!sizeMatches(emb.dest, emb.size)) tasks.push(emb);
   for (const t of indexTasks(manifest, dataDir)) if (!sizeMatches(t.dest, t.size)) tasks.push(t);
   if (modelEntry && !existsByName(path.join(modelsDir, modelEntry.file)))
     tasks.push(await modelTask(modelEntry, modelsDir, signal));
