@@ -32,7 +32,7 @@
       "label": "Qwen2.5 14B Instruct",
       "repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
       "file": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
-      "paramsB": 14, "quant": "Q4_K_M", "sizeGB": 8.5,
+      "paramsB": 14, "quant": "Q4_K_M", "sizeGB": 9.0,
       "default": true,
       "recommended": "Massima qualità per Q&A complessi; richiede GPU da 8+ GB."
     },
