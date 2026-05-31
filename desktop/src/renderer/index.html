@@ -348,7 +348,7 @@
     .models-hint { font-size: .76rem; color: var(--muted); line-height: 1.45; margin: 0 0 1rem;
                    border-left: 2px solid var(--orange-dim); padding-left: .7rem; }
     .mrow {
-      display: grid; grid-template-columns: 1fr auto; gap: .2rem 1rem; align-items: center;
+      display: grid; grid-template-columns: 1fr auto auto; gap: .2rem 1rem; align-items: center;
       padding: .7rem .8rem; margin-bottom: .55rem; cursor: pointer;
       background: #0e1014; border: 1px solid var(--line); border-left: 3px solid var(--line);
     }
@@ -360,6 +360,10 @@
     .mrow .mmeta { grid-column: 1; font-family: ui-monospace, monospace; font-size: .74rem; color: var(--muted); }
     .mrow .meta-warn { color: #d98a3a; }
     .mrow .mest { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-family: ui-monospace, monospace; }
+    .mdel { grid-column: 3; grid-row: 1 / span 2; align-self: center; background: none; border: 0; cursor: pointer;
+            color: var(--muted); font-size: 1rem; padding: .2rem .35rem; line-height: 1; }
+    .mdel:hover { color: #e06b6b; }
+    .mdel-actions { display: flex; gap: .5rem; align-items: center; }
     .mrow .meta-eta { font-size: 1.02rem; font-weight: 700; color: var(--text); }
     .mrow .meta-tps { font-size: .72rem; color: var(--muted); }
     .badge { display: inline-block; font-family: ui-monospace, monospace; font-size: .66rem; letter-spacing: .08em;
@@ -920,6 +924,8 @@
         badgeInUse: "in uso",
         modelsDownloadMore: "Scarica e usa un altro modello",
         modelsDownload: "Scarica",
+        modelsDelete: "Elimina",
+        modelsDeleteConfirm: (label) => `Eliminare ${label}? Libera spazio su disco; potrai riscaricarlo.`,
         rating: { veloce: "veloce", accettabile: "accettabile", lento: "lento" },
         errCap: "Errore", errLow: "errore",
         setupTitle: "PRIMO <b>AVVIO</b>",
@@ -981,6 +987,8 @@
         badgeInUse: "in use",
         modelsDownloadMore: "Download & use another model",
         modelsDownload: "Download",
+        modelsDelete: "Delete",
+        modelsDeleteConfirm: (label) => `Delete ${label}? Frees disk space; you can re-download it later.`,
         rating: { veloce: "fast", accettabile: "acceptable", lento: "slow" },
         errCap: "Error", errLow: "error",
         setupTitle: "FIRST <b>RUN</b>",
@@ -1076,7 +1084,7 @@
     const modelsPanel = document.getElementById("models");
     const modelBtn = document.getElementById("model-btn");
     const modelsList = document.getElementById("models-list");
-    let switching = false;
+    let switching = false, canManage = false;
 
     capsuleers.onReady(() => { modelBtn.disabled = false; });
 
@@ -1094,17 +1102,39 @@
       const layerTxt = m.gpuLayers >= m.totalLayers
         ? L.allLayers(m.totalLayers)
         : L.someLayers(m.gpuLayers, m.totalLayers);
+      const del = (canManage && !m.current) ? `<button class="mdel" title="${esc(L.modelsDelete)}">🗑</button>` : "";
       row.innerHTML =
         `<div class="mname">${esc(m.label)} ${badge}</div>` +
         `<div class="mmeta${warn}">${m.sizeGB} GB · ${esc(m.quant)} · ${layerTxt}</div>` +
-        `<div class="mest"><div class="meta-eta">${fmtEta(m.etaSeconds)}</div><div class="meta-tps">~${m.tokPerSec} tok/s</div></div>`;
+        `<div class="mest"><div class="meta-eta">${fmtEta(m.etaSeconds)}</div><div class="meta-tps">~${m.tokPerSec} tok/s</div></div>` + del;
       if (!m.current) row.addEventListener("click", () => selectModel(m, row));
+      const delBtn = row.querySelector(".mdel");
+      if (delBtn) delBtn.addEventListener("click", (e) => { e.stopPropagation(); deleteModel(m, row); });
       return row;
+    }
+
+    // Inline confirm + delete a downloaded model (frees disk space).
+    function deleteModel(m, row) {
+      row.style.cursor = "default";
+      row.replaceWith(row = row.cloneNode(false));  // drop the row's switch click handler
+      row.className = "mrow";
+      row.innerHTML =
+        `<span class="mname">${esc(L.modelsDeleteConfirm(m.label))}</span>` +
+        `<span class="mdel-actions"><button class="dl-btn ghost mdel-no">${L.setupCancel}</button>` +
+        `<button class="dl-btn mdel-yes">${L.modelsDelete}</button></span>`;
+      row.style.gridTemplateColumns = "1fr auto";
+      row.querySelector(".mdel-no").addEventListener("click", () => loadModels());
+      row.querySelector(".mdel-yes").addEventListener("click", async () => {
+        const res = await capsuleers.models.delete(m.file);
+        if (res?.error) { row.querySelector(".mname").innerHTML = `<span class="meta-warn">${esc(res.error)}</span>`; return; }
+        await loadModels();  // refresh + the freed VRAM/space
+      });
     }
 
     async function loadModels() {
       modelsList.innerHTML = `<div class="models-hint">${L.computing}</div>`;
       const r = await capsuleers.models.list();
+      canManage = !!r.manage;
       if (r.vram) {
         const usedPct = Math.round(r.vram.usedMB / r.vram.totalMB * 100);
         document.getElementById("models-vram").innerHTML =

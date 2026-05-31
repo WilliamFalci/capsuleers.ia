@@ -101,6 +101,9 @@ let activeCtx = null;
 
 export function resetConversation() { history = []; }
 
+/** File (.gguf) of the chat model currently loaded (null if none). */
+export function currentModel() { return currentModelFile; }
+
 // Cancels the generation currently in progress (if any). Returns a promise
 // that resolves once the generation has truly finished tearing down.
 export async function cancel() {

@@ -3,8 +3,8 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, Notification, dialog, screen } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState } from "./engine.mjs";
+import { readFile, writeFile, mkdir, unlink } from "node:fs/promises";
+import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState, currentModel } from "./engine.mjs";
 import { localIntel, characterDetail } from "./intel.mjs";
 import { startWatch, stopWatch, isEnabled, scanNow } from "./clipboard-watch.mjs";
 import { statSync } from "node:fs";
@@ -416,8 +416,20 @@ ipcMain.handle("local:detail", async (_e, who) => {
 
 // Models: list with an estimate (given the VRAM free now), VRAM state, and hot-swap.
 ipcMain.handle("models:list", async () => {
-  try { return { models: await listModels(), vram: await vramState() }; }
-  catch (e) { return { error: e.message, models: [], vram: null }; }
+  try { return { models: await listModels(), vram: await vramState(), manage: !!assetDirs }; }
+  catch (e) { return { error: e.message, models: [], vram: null, manage: !!assetDirs }; }
+});
+// Delete a downloaded model to free disk space (packaged only; not the one in use
+// nor the embedding model). The user can re-download it later from the catalog.
+ipcMain.handle("models:delete", async (_e, file) => {
+  if (!assetDirs) return { error: "Eliminazione non disponibile (asset locali)." };
+  if (!/^[^/\\]+\.gguf$/i.test(file || "") || /bge|embed/i.test(file)) return { error: "Modello non valido." };
+  if (file === currentModel()) return { error: "Modello in uso: passa a un altro prima di eliminarlo." };
+  try {
+    await unlink(path.join(assetDirs.modelsDir, file));
+    await unlink(path.join(assetDirs.modelsDir, file + ".part")).catch(() => {});
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
 });
 ipcMain.handle("models:vram", async () => { try { return await vramState(); } catch { return null; } });
 ipcMain.handle("models:set", async (_e, file) => {

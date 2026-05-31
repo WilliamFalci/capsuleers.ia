@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("capsuleers", {
     list: () => ipcRenderer.invoke("models:list"),
     vram: () => ipcRenderer.invoke("models:vram"),
     set: (file) => ipcRenderer.invoke("models:set", file),
+    delete: (file) => ipcRenderer.invoke("models:delete", file),
     // Download an extra model on demand (catalog of not-yet-downloaded ones).
     catalog: () => ipcRenderer.invoke("models:catalog"),
     download: (id) => ipcRenderer.invoke("models:download", id),
