@@ -12,13 +12,19 @@ async function esiGet(p) {
   if (!r.ok) throw new Error(`ESI ${r.status}`);
   return r.json();
 }
-async function resolveSystemId(name) {
+// Resolve a reference name to what it actually IS in EVE: a system, region or
+// constellation. Jump distance only makes sense from a SYSTEM, so the caller must
+// warn when the user gave a region/constellation (e.g. "Fountain") instead.
+async function resolveNear(name) {
   try {
     const r = await fetch(`${ESI}/universe/ids/?datasource=tranquility`, {
       method: "POST", headers: { "content-type": "application/json", "User-Agent": UA }, body: JSON.stringify([name]),
     });
     const d = await r.json();
-    return d.systems?.[0] ? { id: d.systems[0].id, name: d.systems[0].name } : null;
+    if (d.systems?.[0]) return { type: "system", id: d.systems[0].id, name: d.systems[0].name };
+    if (d.regions?.[0]) return { type: "region", name: d.regions[0].name };
+    if (d.constellations?.[0]) return { type: "constellation", name: d.constellations[0].name };
+    return null;  // unknown name
   } catch { return null; }
 }
 const routeCache = new Map();  // "from-to" → number of jumps (or null if unreachable via gate)
@@ -81,10 +87,13 @@ export async function scoutConnections(systems, opts = {}) {
     return { text: `EVE-Scout (dati live): nessun collegamento wormhole segnalato da ${systems.join("/")} al momento.`, entities: [] };
   }
 
-  // Sorting by distance from a reference system (e.g. "closest to Jita").
+  // Sorting by distance from a reference SYSTEM (e.g. "closest to Jita"). Jump
+  // distance only exists between systems, so if the reference is a region or
+  // constellation (e.g. "Fountain") we warn instead of computing a bogus distance.
+  let nearWarning = "";
   if (opts.near) {
-    const ref = await resolveSystemId(opts.near);
-    if (ref) {
+    const ref = await resolveNear(opts.near);
+    if (ref && ref.type === "system") {
       const withJumps = await Promise.all(sel.map(async (s) => ({ s, jumps: await jumpsBetween(ref.id, s.in_system_id) })));
       const reachable = withJumps.filter((x) => x.jumps != null).sort((a, b) => a.jumps - b.jumps);
       if (reachable.length) {
@@ -94,8 +103,11 @@ export async function scoutConnections(systems, opts = {}) {
           entities: [],
         };
       }
+    } else if (ref) {  // region / constellation → not a system
+      nearWarning = `⚠ ATTENZIONE: "${opts.near}" è ${ref.type === "region" ? "una REGIONE" : "una COSTELLAZIONE"}, NON un sistema. La distanza in salti si calcola solo tra SISTEMI: per il collegamento più vicino indica un SISTEMA specifico (es. un sistema dentro ${ref.name}). Intanto i collegamenti disponibili:\n`;
+    } else {           // unknown name
+      nearWarning = `⚠ ATTENZIONE: non ho riconosciuto "${opts.near}" come sistema EVE valido. Per la distanza indica un nome di sistema corretto. Intanto i collegamenti disponibili:\n`;
     }
-    // unresolvable reference / no reachable k-space destination → normal sorting
   }
 
   // Group by origin system (Thera / Turnur).
@@ -109,7 +121,7 @@ export async function scoutConnections(systems, opts = {}) {
     `Da ${sys} (${list.length} collegament${list.length === 1 ? "o" : "i"}):\n` +
     list.map((s, i) => `${i + 1}. ${fmtSig(s)}`).join("\n"));
   return {
-    text: `INTEL EVE-Scout (Signal Cartel, dati live) — collegamenti wormhole:\n${blocks.join("\n\n")}\nFonte: https://www.eve-scout.com/`,
+    text: `${nearWarning}INTEL EVE-Scout (Signal Cartel, dati live) — collegamenti wormhole:\n${blocks.join("\n\n")}\nFonte: https://www.eve-scout.com/`,
     entities: [],
   };
 }

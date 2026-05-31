@@ -631,8 +631,8 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     : "\nIMPORTANT: the CONTEXT includes authoritative LIVE DATA (EVE-Scout/ESI/killboard/prices): answer using it, do NOT say the information is missing.";
   // For a Thera/Turnur connection, always surface BOTH wormhole signatures.
   const scoutDirective = !scout.text ? "" : qLang === "it"
-    ? "\nPer un collegamento Thera/Turnur indica SEMPRE entrambe le signature: quella di ENTRATA (da scansionare nel sistema k-space) e quella di USCITA (da scansionare in Thera/Turnur)."
-    : "\nFor a Thera/Turnur connection ALWAYS give both wormhole signatures: the ENTRY one (to scan in the k-space system) and the EXIT one (to scan in Thera/Turnur).";
+    ? "\nPer un collegamento Thera/Turnur indica SEMPRE entrambe le signature: quella di ENTRATA (da scansionare nel sistema k-space) e quella di USCITA (da scansionare in Thera/Turnur). Se i dati EVE-Scout contengono un AVVISO (⚠, es. il riferimento è una regione/costellazione e non un sistema), riportalo chiaramente all'utente."
+    : "\nFor a Thera/Turnur connection ALWAYS give both wormhole signatures: the ENTRY one (to scan in the k-space system) and the EXIT one (to scan in Thera/Turnur). If the EVE-Scout data contains a WARNING (⚠, e.g. the reference is a region/constellation, not a system), relay it clearly to the user.";
   // A fit comes with authoritative computed stats; instruct the model to present
   // them and reason about the build instead of just describing a random module.
   const fitDirective = !fitInfo ? "" : qLang === "it"
