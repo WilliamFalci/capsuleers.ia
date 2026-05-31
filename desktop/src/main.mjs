@@ -7,7 +7,8 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState } from "./engine.mjs";
 import { localIntel, characterDetail } from "./intel.mjs";
 import { startWatch, stopWatch, isEnabled, scanNow } from "./clipboard-watch.mjs";
-import { loadManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, loadCatalog, installedCatalogIds, modelTask } from "./assets.mjs";
+import { statSync } from "node:fs";
+import { loadManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, indexTasks, loadCatalog, installedCatalogIds, modelTask } from "./assets.mjs";
 import electronUpdater from "electron-updater";
 const { autoUpdater } = electronUpdater;
 
@@ -330,6 +331,22 @@ function setupAutoUpdate() {
   autoUpdater.checkForUpdates().catch(() => {});
 }
 
+// Re-download index/data files whose size no longer matches the manifest (e.g. an
+// updated fit_lookup.json), so existing installs pick up new data without a reinstall.
+// Only the changed files are fetched; the big vector index is untouched if unchanged.
+async function refreshDataFiles() {
+  if (!assetDirs || setupNeeded()) return;  // first-run setup downloads everything anyway
+  const manifest = loadManifest();
+  const sizeNe = (p, size) => { try { return statSync(p).size !== size; } catch { return true; } };
+  const stale = indexTasks(manifest, assetDirs.dataDir).filter((t) => sizeNe(t.dest, t.size));
+  if (!stale.length) return;
+  try {
+    win?.webContents.send("status", { k: "index" });
+    await downloadTasks(stale);
+    writeIndexMeta(assetDirs.dataDir);
+  } catch { /* keep existing files; non-fatal (the fit lookup just stays older) */ }
+}
+
 // Start the RAG engine (models + index) and notify the renderer.
 async function startEngine() {
   try {
@@ -350,7 +367,7 @@ app.whenReady().then(async () => {
   // Once the window is ready: if assets are missing, show setup; otherwise start the engine.
   win.webContents.once("did-finish-load", async () => {
     if (setupNeeded()) win?.webContents.send("setup:needed", await setupInfo());
-    else startEngine();
+    else { await refreshDataFiles(); startEngine(); }
   });
 
   app.on("activate", () => {
