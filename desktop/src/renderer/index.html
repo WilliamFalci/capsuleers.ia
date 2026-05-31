@@ -1109,9 +1109,18 @@
     let current = null, body = null;
     capsuleers.onToken((t) => { if (body) { body.textContent += t; chat.scrollTop = chat.scrollHeight; } });
 
+    // Input history recall with ↑/↓ (shell / ChatGPT style).
+    const inputHistory = [];   // submitted questions, oldest → newest
+    let histPos = 0;           // 0 = live draft; N = N-th entry from the end
+    let qDraft = "";           // the live input, saved while navigating history
+    const caretToEnd = () => { const n = q.value.length; q.setSelectionRange(n, n); };
+
     async function askNow() {
       const text = q.value.trim();
       if (!text) return;
+      if (inputHistory[inputHistory.length - 1] !== text) inputHistory.push(text);  // recall with ↑/↓
+      if (inputHistory.length > 100) inputHistory.shift();
+      histPos = 0; qDraft = "";
       q.value = ""; q.disabled = true; send.disabled = true;
       bubble("user").textContent = text;
       current = bubble("bot");
@@ -1136,7 +1145,17 @@
     }
 
     send.addEventListener("click", askNow);
-    q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askNow(); } });
+    q.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askNow(); return; }
+      // ↑ recalls older questions, ↓ newer — but only when the caret is on the
+      // first/last line, so arrows still move within a multi-line draft.
+      if (e.key === "ArrowUp" && histPos < inputHistory.length && q.value.slice(0, q.selectionStart).indexOf("\n") === -1) {
+        if (histPos === 0) qDraft = q.value;
+        histPos++; q.value = inputHistory[inputHistory.length - histPos]; caretToEnd(); e.preventDefault();
+      } else if (e.key === "ArrowDown" && histPos > 0 && q.value.slice(q.selectionEnd).indexOf("\n") === -1) {
+        histPos--; q.value = histPos === 0 ? qDraft : inputHistory[inputHistory.length - histPos]; caretToEnd(); e.preventDefault();
+      }
+    });
 
     // --- AI model selection (with response-time estimate given the VRAM) ---
     const modelsPanel = document.getElementById("models");
