@@ -9,7 +9,6 @@
       "repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
       "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
       "paramsB": 4, "quant": "Q4_K_M", "sizeGB": 2.5,
-      "default": true,
       "recommended": "Equilibrio velocità/qualità, gira bene anche su GPU da 6-8 GB."
     },
     {
@@ -27,6 +26,15 @@
       "file": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
       "paramsB": 7, "quant": "Q4_K_M", "sizeGB": 4.7,
       "recommended": "Più accurato; richiede ~6-8 GB di VRAM per stare tutto in GPU."
+    },
+    {
+      "id": "qwen2.5-14b",
+      "label": "Qwen2.5 14B Instruct",
+      "repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
+      "file": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+      "paramsB": 14, "quant": "Q4_K_M", "sizeGB": 8.5,
+      "default": true,
+      "recommended": "Massima qualità per Q&A complessi; richiede GPU da 8+ GB."
     },
     {
       "id": "mistral-nemo",
