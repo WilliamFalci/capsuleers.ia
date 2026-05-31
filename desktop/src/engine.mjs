@@ -543,10 +543,11 @@ export async function init(onStatus = () => {}) {
 }
 
 /** Answers the question; onToken(text) for streaming. Returns {answer, sources}. */
-export async function ask(question, onToken = () => {}) {
+export async function ask(question, onToken = () => {}, uiLang = null) {
   // 1. Pasted EFT fit → analysis (All V validation) + estimated cost.
+  const isFit = looksLikeFit(question);
   let fitInfo = "";
-  if (looksLikeFit(question)) {
+  if (isFit) {
     const fit = parseEft(question);
     if (fit) {
       fitInfo = await describeFit(fit);
@@ -567,7 +568,10 @@ export async function ask(question, onToken = () => {}) {
   const intel = await maybeIntel(question);  // { text, entities, kills }
   const esi = await maybeEsi(question);      // { text, entities } — official Fenris Creations data
   const scout = await maybeScout(question);  // { text, entities } — EVE-Scout connections
-  const qLang = detectLang(question);        // language of the QUESTION → answer + links
+  // Language of the QUESTION → answer + links. A pasted fit is all-English game
+  // terms, so detectLang would always say "en"; for a fit, follow the UI/system
+  // language instead (Italian system → Italian answer).
+  const qLang = (isFit && (uiLang === "it" || uiLang === "en")) ? uiLang : detectLang(question);
 
   // 4. Context from the retrieved documents.
   let context = "", used = 0;

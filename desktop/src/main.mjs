@@ -490,10 +490,13 @@ ipcMain.on("setup:cancel", () => { if (setupAbort) setupAbort.abort(); });
 ipcMain.handle("ask", async (event, question) => {
   if (!ready) return { error: "Motore non ancora pronto." };
   try {
+    // System language: used as the answer language for a pasted fit (whose text is
+    // all-English game terms and would otherwise always be detected as English).
+    const uiLang = (app.getLocale() || "en").toLowerCase().startsWith("it") ? "it" : "en";
     // Don't write to a destroyed webContents (window closed mid-response).
     return await ask(question, (t) => {
       if (!event.sender.isDestroyed()) event.sender.send("token", t);
-    });  // {answer, sources, kills, lang}
+    }, uiLang);  // {answer, sources, kills, lang}
   } catch (e) {
     return { error: e.message };
   }
