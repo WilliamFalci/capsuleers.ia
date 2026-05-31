@@ -454,7 +454,7 @@ ipcMain.handle("models:catalog", async () => {
     const freeGB = v ? v.freeMB / 1024 : null;
     const models = catalog.models.filter((m) => !installed.has(m.id)).map((m) => ({
       id: m.id, label: m.label, sizeGB: m.sizeGB, quant: m.quant, paramsB: m.paramsB,
-      recommended: m.recommended || "", rating: fitRating(m.sizeGB, freeGB),
+      recommended: m.recommended || "", default: !!m.default, rating: fitRating(m.sizeGB, freeGB),
     }));
     const order = { veloce: 0, accettabile: 1, lento: 2, "": 3 };
     models.sort((a, b) => (order[a.rating] - order[b.rating]) || (a.sizeGB - b.sizeGB));

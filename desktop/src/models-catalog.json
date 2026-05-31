@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "_note": "Updatable catalog of selectable chat models. The app fetches this file from the repo at runtime (raw GitHub) so new models appear WITHOUT an app update; this bundled copy is the offline fallback. Each entry is just a HuggingFace repo + file: the app resolves the exact size and SHA256 live from HuggingFace (LFS oid) at download time, so no checksum maintenance is needed. 'sizeGB'/'paramsB' are approximate, used only for display and the VRAM range filter. To add a model: append an entry within the size range below and validate the repo/file exist on HuggingFace.",
+  "_note": "Updatable catalog of selectable chat models. The app fetches this file from the repo at runtime (raw GitHub) so new models appear WITHOUT an app update; this bundled copy is the offline fallback. Each entry is just a HuggingFace repo + file: the app resolves the exact size and SHA256 live from HuggingFace (LFS oid) at download time, so no checksum maintenance is needed. 'sizeGB'/'paramsB' are approximate, used only for display and the VRAM range filter. 'default': true pre-selects the model at first run and shows the Recommended badge; 'recommended' is a short Italian hint shown under the model. To add a model: append an entry within the size range below and validate the repo/file exist on HuggingFace.",
   "range": { "minGB": 1.8, "maxGB": 9.0 },
   "models": [
     {

@@ -383,6 +383,7 @@
     .badge.accettabile { background: #33280a; color: #e0b352; border: 1px solid #6b5417; }
     .badge.lento { background: #331010; color: #e06b6b; border: 1px solid #6b2424; }
     .badge.now { background: var(--orange); color: #1a0d02; border: 1px solid var(--orange); }
+    .badge.reco { background: transparent; color: var(--orange); border: 1px solid var(--orange); }
     /* Download of an extra model from the MODEL panel */
     .dl-head { font-family: ui-monospace, monospace; font-size: .74rem; letter-spacing: .08em; text-transform: uppercase;
                color: var(--muted); margin: 1.1rem 0 .5rem; padding-left: .7rem; border-left: 2px solid var(--orange-dim); }
@@ -976,7 +977,7 @@
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
         vramLine: (free, total, pct) => `VRAM: <b>${free} GB liberi</b> su ${total} GB · ${pct}% in uso`,
-        badgeInUse: "in uso",
+        badgeInUse: "in uso", badgeRecommended: "consigliato",
         modelsDownloadMore: "Scarica e usa un altro modello",
         modelsDownload: "Scarica",
         modelsDelete: "Elimina",
@@ -1041,7 +1042,7 @@
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,
         vramLine: (free, total, pct) => `VRAM: <b>${free} GB free</b> of ${total} GB · ${pct}% in use`,
-        badgeInUse: "in use",
+        badgeInUse: "in use", badgeRecommended: "recommended",
         modelsDownloadMore: "Download & use another model",
         modelsDownload: "Download",
         modelsDelete: "Delete",
@@ -1219,9 +1220,10 @@
       const row = document.createElement("div");
       row.className = "mrow dlrow";
       const reco = (SYS_LANG === "it" && m.recommended) ? `<div class="mmeta">${esc(m.recommended)}</div>` : "";
+      const recBadge = m.default ? ` <span class="badge reco">${L.badgeRecommended}</span>` : "";
       const badge = m.rating ? ` <span class="badge ${m.rating}">${esc(L.rating[m.rating] || m.rating)}</span>` : "";
       row.innerHTML =
-        `<div class="mname">${esc(m.label)}${badge}</div>` + reco +
+        `<div class="mname">${esc(m.label)}${recBadge}${badge}</div>` + reco +
         `<div class="dl-row2"><span class="mmeta">${m.sizeGB} GB · ${esc(m.quant)}</span>` +
         `<button class="dl-btn">${L.modelsDownload} · ${m.sizeGB} GB</button></div>` +
         `<div class="dl-prog" hidden><div class="dl-bar"><i></i></div>` +
@@ -1309,11 +1311,12 @@
         listEl.innerHTML = "";
         for (const m of models) {
           const reco = (SYS_LANG === "it" && m.recommended) ? m.recommended : "";
+          const recBadge = m.default ? ` <span class="badge reco">${L.badgeRecommended}</span>` : "";
           const row = document.createElement("label");
           row.className = "srow" + (m.id === selected ? " sel" : "");
           row.innerHTML =
             `<input type="radio" name="setup-model" ${m.id === selected ? "checked" : ""}>` +
-            `<span class="sname">${esc(m.label)}</span>` +
+            `<span class="sname">${esc(m.label)}${recBadge}</span>` +
             `<span class="ssize">${m.installed ? `<span class="sinstalled">${L.setupInstalled}</span>` : "~" + m.sizeGB + " GB"}</span>` +
             (reco ? `<span class="sreco">${esc(reco)}</span>` : "");
           row.querySelector("input").addEventListener("change", () => { selected = m.id; renderModels(); renderTotal(); });
