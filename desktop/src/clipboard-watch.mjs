@@ -26,16 +26,24 @@ function isNameLine(l) {
 }
 
 /**
- * Returns the array of names if `text` looks like a Local (≥3 lines, ALL valid
- * names), otherwise null. Conservative: a single non-name line → discarded.
+ * Returns the array of names if `text` looks like a Local, otherwise null.
+ * Robust to the real EVE client copy: any line-ending (\r\n / \r / \n), and a
+ * line that carries extra columns (tab- or multi-space-separated, e.g. a status)
+ * → we take the first field as the name. Tolerates up to 2 stray lines (a header/
+ * footer) so the whole Local isn't discarded for one odd row.
  */
 export function isLocalList(text) {
   if (!text || text.length > 20000) return null;
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = text.split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length < 3) return null;
-  for (const l of lines) if (!isNameLine(l)) return null;
-  const uniq = [...new Set(lines)];
-  return uniq.length >= 3 ? uniq : null;
+  const names = [];
+  let bad = 0;
+  for (const l of lines) {
+    const cand = l.split(/\t| {2,}/)[0].trim();   // first column (drop trailing status/extra)
+    if (isNameLine(cand)) names.push(cand); else bad++;
+  }
+  const uniq = [...new Set(names)];
+  return (uniq.length >= 3 && bad <= 2) ? uniq : null;
 }
 
 function tick() {

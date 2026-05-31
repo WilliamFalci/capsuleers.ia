@@ -1,6 +1,6 @@
 // Electron main process: opens the window, initializes the RAG engine,
 // and routes questions from the renderer (IPC) with streaming responses.
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, Notification, dialog, screen } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, Notification, dialog, screen, clipboard } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -44,6 +44,7 @@ const MSTR = {
     btnNo: "No", btnShowIntel: "Sì, mostra intel",
     noLocalMsg: "Nessuna Local negli appunti.",
     noLocalDetail: "Copia la lista dei piloti dalla finestra Local di EVE (Ctrl+A, Ctrl+C) e riprova.",
+    cbDiag: "Diagnosi appunti", cbLines: "righe", cbEmpty: "(appunti vuoti)",
     btnOk: "OK",
     initError: (msg) => `Errore init: ${msg}`,
     updTitle: "Aggiornamento disponibile",
@@ -71,6 +72,7 @@ const MSTR = {
     btnNo: "No", btnShowIntel: "Yes, show intel",
     noLocalMsg: "No Local in the clipboard.",
     noLocalDetail: "Copy the pilot list from EVE's Local window (Ctrl+A, Ctrl+C) and try again.",
+    cbDiag: "Clipboard diagnostic", cbLines: "lines", cbEmpty: "(clipboard empty)",
     btnOk: "OK",
     initError: (msg) => `Init error: ${msg}`,
     updTitle: "Update available",
@@ -251,10 +253,17 @@ function scanClipboardNow() {
   else {
     showWindow();
     const m = M();
+    // Diagnostic preview of the actual clipboard, so a user whose EVE copy isn't
+    // recognized can report what the client really puts on the clipboard.
+    const raw = (clipboard.readText() || "");
+    const lines = raw.split(/\r\n|\r|\n/);
+    const preview = raw.trim()
+      ? `[${m.cbLines}: ${lines.length}]\n` + lines.slice(0, 6).map((l) => "» " + l).join("\n").slice(0, 700)
+      : m.cbEmpty;
     dialog.showMessageBox(win, {
       type: "info", title: m.confirmTitle,
       message: m.noLocalMsg,
-      detail: m.noLocalDetail,
+      detail: `${m.noLocalDetail}\n\n— ${m.cbDiag} —\n${preview}`,
       buttons: [m.btnOk], noLink: true,
     });
   }
