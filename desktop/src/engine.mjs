@@ -597,7 +597,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const totalCost = await maybeTotalCost(question);
   const intel = await maybeIntel(question);  // { text, entities, kills }
   const esi = await maybeEsi(question);      // { text, entities } — official Fenris Creations data
-  const scout = await maybeScout(question);  // { text, entities } — EVE-Scout connections
+  // Use the CONDENSED question for EVE-Scout so a follow-up ("and the closest to
+  // Fountain?") keeps the Thera/Turnur context resolved by condense().
+  const scout = await maybeScout(standalone);  // { text, entities } — EVE-Scout connections
   // Answer/link language. A pasted fit is all-English game terms (→ follow the
   // system language). A follow-up keeps the conversation's language (so a short
   // "elencale" after an Italian turn doesn't flip to English). First turn: detect,
@@ -627,6 +629,10 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const liveDirective = !liveIntel ? "" : qLang === "it"
     ? "\nIMPORTANTE: il CONTESTO include DATI LIVE autorevoli (EVE-Scout/ESI/killboard/prezzi): rispondi usandoli, NON dire che l'informazione manca."
     : "\nIMPORTANT: the CONTEXT includes authoritative LIVE DATA (EVE-Scout/ESI/killboard/prices): answer using it, do NOT say the information is missing.";
+  // For a Thera/Turnur connection, always surface BOTH wormhole signatures.
+  const scoutDirective = !scout.text ? "" : qLang === "it"
+    ? "\nPer un collegamento Thera/Turnur indica SEMPRE entrambe le signature: quella di ENTRATA (da scansionare nel sistema k-space) e quella di USCITA (da scansionare in Thera/Turnur)."
+    : "\nFor a Thera/Turnur connection ALWAYS give both wormhole signatures: the ENTRY one (to scan in the k-space system) and the EXIT one (to scan in Thera/Turnur).";
   // A fit comes with authoritative computed stats; instruct the model to present
   // them and reason about the build instead of just describing a random module.
   const fitDirective = !fitInfo ? "" : qLang === "it"
@@ -636,7 +642,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     + (liveIntel ? `[DATI LIVE]\n${liveIntel}\n\n` : "")
     + (fitInfo ? `[ANALISI DEL FIT — dati autorevoli]\n${fitInfo}\n\n` : "")
     + `${context}\n`
-    + `DOMANDA: ${question}\n\n${(LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en)}${liveDirective}${fitDirective}`;
+    + `DOMANDA: ${question}\n\n${(LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en)}${liveDirective}${scoutDirective}${fitDirective}`;
 
   // 5. Generation (GPU, streaming). Cancelable via AbortSignal: if the app closes
   //    while the model is answering, cancel() interrupts the prompt and here we dispose

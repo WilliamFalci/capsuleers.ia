@@ -46,20 +46,21 @@ async function fetchSignatures() {
 // Maximum ship size → readable label.
 const SHIP = { small: "fino a fregata/destroyer", medium: "fino a incrociatore/BC", large: "fino a battleship", xlarge: "anche capital", capital: "anche capital" };
 
-// sig: "in"  → signature to scan in the k-space system to ENTER Thera (in_signature)
-//      "out" → signature to scan INSIDE Thera to EXIT (out_signature)
-//      otherwise → both (out→in).
-function fmtSig(s, sig) {
-  const dest = s.in_system_name || "?";
+// Always reports BOTH signatures of the connection:
+//  • in_signature  → scan it in the k-space system (dest) to ENTER Thera/Turnur;
+//  • out_signature → scan it inside Thera/Turnur to EXIT toward that system.
+function fmtSig(s) {
+  const dest = s.in_system_name || "?";          // k-space destination (e.g. Sacalan)
+  const origin = s.out_system_name || "Thera";   // Thera / Turnur
   const cls = s.in_system_class ? s.in_system_class.toUpperCase() : "";
   const region = s.in_region_name ? `, ${s.in_region_name}` : "";
   const wh = s.wh_type ? ` · WH ${s.wh_type}` : "";
   const size = s.max_ship_size ? ` · ${SHIP[s.max_ship_size] || s.max_ship_size}` : "";
   const life = s.remaining_hours != null ? ` · scade tra ~${s.remaining_hours}h` : "";
-  let sigPart = "";
-  if (sig === "in" && s.in_signature) sigPart = ` · in-sig ${s.in_signature} (da scansionare in ${dest})`;
-  else if (sig === "out" && s.out_signature) sigPart = ` · out-sig ${s.out_signature} (da scansionare in ${s.out_system_name || "Thera"})`;
-  else if (s.out_signature || s.in_signature) sigPart = ` · sig ${s.out_signature || "?"}→${s.in_signature || "?"}`;
+  const sigs = [];
+  if (s.in_signature) sigs.push(`ENTRATA a ${origin} da ${dest}: scansiona la signature ${s.in_signature} in ${dest}`);
+  if (s.out_signature) sigs.push(`USCITA da ${origin} verso ${dest}: scansiona la signature ${s.out_signature} in ${origin}`);
+  const sigPart = sigs.length ? ` · ${sigs.join(" · ")}` : "";
   return `${dest}${cls ? ` (${cls}${region})` : region}${wh}${size}${life}${sigPart}`;
 }
 
@@ -87,7 +88,7 @@ export async function scoutConnections(systems, opts = {}) {
       const withJumps = await Promise.all(sel.map(async (s) => ({ s, jumps: await jumpsBetween(ref.id, s.in_system_id) })));
       const reachable = withJumps.filter((x) => x.jumps != null).sort((a, b) => a.jumps - b.jumps);
       if (reachable.length) {
-        const lines = reachable.map((x, i) => `${i + 1}. ${fmtSig(x.s, opts.sig)} · ${x.jumps} jump da ${ref.name}`);
+        const lines = reachable.map((x, i) => `${i + 1}. ${fmtSig(x.s)} · ${x.jumps} jump da ${ref.name}`);
         return {
           text: `INTEL EVE-Scout (Signal Cartel, dati live) — collegamenti ${systems.join("/")} ordinati per distanza da ${ref.name} (più vicino prima, salti via gate):\n${lines.join("\n")}\nFonte: https://www.eve-scout.com/`,
           entities: [],
@@ -106,7 +107,7 @@ export async function scoutConnections(systems, opts = {}) {
   }
   const blocks = [...groups.entries()].map(([sys, list]) =>
     `Da ${sys} (${list.length} collegament${list.length === 1 ? "o" : "i"}):\n` +
-    list.map((s, i) => `${i + 1}. ${fmtSig(s, opts.sig)}`).join("\n"));
+    list.map((s, i) => `${i + 1}. ${fmtSig(s)}`).join("\n"));
   return {
     text: `INTEL EVE-Scout (Signal Cartel, dati live) — collegamenti wormhole:\n${blocks.join("\n\n")}\nFonte: https://www.eve-scout.com/`,
     entities: [],
