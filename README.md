@@ -30,9 +30,14 @@ change/add/remove models later). Updates are delivered automatically (electron-u
 - **Fit analysis** — paste an EFT fit and get All-V validation (CPU/PG/slots) plus
   estimated **DPS, EHP, speed, cap stability**, whether the fit **uses the ship's
   bonuses**, and short **theorycrafting** on the role (PvP/PvE, strengths/weaknesses).
+  Add `precise` on its own line for exact server-computed stats (eve-kill dogma engine).
 - **Live prices** (EVE Ref) — "how much is a Caracal?", total cost of a material list.
 - **Pilot intel** (eve-kill killboard) — "who is `<pilot/corp/alliance>`?" → kills,
   losses, PvP stats; **leadership** and **system activity** via official ESI.
+- **PvP analytics** (eve-kill MCP) — relationships and fights from the killboard:
+  "who flies with `<pilot>`", "who hunts `<pilot>`", "`<X>` vs `<Y>`", **safe routes**
+  ("safe route from Jita to Amarr"), **recent battles**, the **current meta/doctrines**,
+  most expensive kills, and **killmail** story/forensics from a zKillboard link.
 - **Local intel from the clipboard** — copy the Local in EVE (Ctrl+A, Ctrl+C) and the
   app shows who's around it, flagging the dangerous ones.
 - **Thera/Turnur wormhole connections** (EVE-Scout) — "the Thera connection closest to
@@ -77,7 +82,8 @@ change/add/remove models later). Updates are delivered automatically (electron-u
 - **eve-survival.org** — PVE mission guides *(license not explicitly stated: see the note in
   [`ingestion`](ingestion/capsuleers_ingestion/missions/eve_survival.py))*.
 - **Anoikis** (wormhole effects/statics) · **EVE Ref** (live prices) · **ESI** (official
-  live data) · **eve-kill.com** (killboard) · **EVE-Scout** (Thera/Turnur connections).
+  live data) · **eve-kill.com** (killboard + [MCP](https://mcp.eve-kill.com/mcp) analytics) ·
+  **EVE-Scout** (Thera/Turnur connections).
 
 ## Build from source
 

@@ -1,6 +1,7 @@
 // Live intel from eve-kill.com (killboard): characters, corporations, alliances.
 // Public API, no auth, CORS. Requires internet (real-time data).
 import { priceByTypeId } from "./prices.mjs";
+import { dossierExtra } from "./mcp-intel.mjs";
 
 const BASE = "https://api.eve-kill.com";
 const UA = "Capsuleers.IA/0.1 (dedodj@gmail.com)";
@@ -152,6 +153,9 @@ export async function intelFor(name, opts = {}) {
         get(`/characters/${pid.id}/intel?days=90`),
       ]);
       parts.push(fmtCharacter(hit.name, st.value, it.value));
+      // Extra archetypes/playstyle/wingmates from the eve-kill MCP dossier (best-effort).
+      const extra = await dossierExtra(pid.id, "character").catch(() => "");
+      if (extra) parts.push(extra);
     } else {
       const sep = pid.type === "alliance" ? "alliances" : "corporations";
       const stats = await get(`/${sep}/${pid.id}/stats/alltime`);

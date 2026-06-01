@@ -9,6 +9,7 @@ import { priceByName, isKnownType, configureDataDir as pricesDataDir } from "./p
 import { intelFor } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
+import { maybeMcp, dogmaEval } from "./mcp-intel.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -581,15 +582,25 @@ export async function init(onStatus = () => {}) {
 /** Answers the question; onToken(text) for streaming. Returns {answer, sources}. */
 export async function ask(question, onToken = () => {}, uiLang = null) {
   // 1. Pasted EFT fit → analysis (All V: validation, DPS/EHP/speed/cap, bonus usage).
-  const isFit = looksLikeFit(question);
+  //    Offline by default. An optional keyword on its own line ("preciso"/"precise"/
+  //    "dogma"/"esatto"/"pyfa") opts into accurate server-side stats via the eve-kill
+  //    dogma engine — that DOES send the fit to the server, hence opt-in only.
+  const wantPrecise = /(?:^|\n)\s*(?:precis\w*|esatt\w*|accurat\w*|dogma|pyfa)\s*(?=\n|$)/i.test(question);
+  const eftText = wantPrecise
+    ? question.split("\n").filter((l) => !/^\s*(?:precis\w*|esatt\w*|accurat\w*|dogma|pyfa)\s*$/i.test(l)).join("\n")
+    : question;
+  const isFit = looksLikeFit(eftText);
   let fitInfo = "", fitShip = null;
   if (isFit) {
-    const fit = parseEft(question);
+    const fit = parseEft(eftText);
     if (fit) {
       fitShip = fit.ship;
       fitInfo = await describeFit(fit);
       const cost = await fitCost(fit);
       if (cost) fitInfo += "\n" + cost;
+      // Opt-in: precise dogma stats from eve-kill (authoritative; placed after the
+      // local estimate so the directive tells the model to prefer them).
+      if (wantPrecise) { const precise = await dogmaEval(eftText); if (precise) fitInfo += "\n" + precise; }
     }
   }
 
@@ -603,7 +614,12 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   //    to preserve entity proper names).
   const priceInfo = await maybePrice(standalone, hits);
   const totalCost = await maybeTotalCost(question);
-  const intel = await maybeIntel(question);  // { text, entities, kills }
+  // eve-kill MCP analytics (dossier archetypes, route danger, war report, wingmates,
+  // battles, meta, killmail story/forensics…). { text, entities, source, sourceTitle }.
+  const mcp = await maybeMcp(question, standalone);
+  // A matched MCP relational/analytic intent (e.g. "chi uccide X", "X vs Y") takes
+  // precedence over the generic killboard intel for the same name → don't run both.
+  const intel = mcp.text ? { text: "", entities: [], kills: [] } : await maybeIntel(question);  // { text, entities, kills }
   const esi = await maybeEsi(question);      // { text, entities } — official Fenris Creations data
   // Use the CONDENSED question for EVE-Scout so a follow-up ("and the closest to
   // Fountain?") keeps the Thera/Turnur context resolved by condense().
@@ -641,7 +657,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // authoritative: the SYSTEM prompt says to answer using only the CONTEXT, so if
   // these blocks sit outside it the model ignores them and says "no info" even when
   // the data is right there. A final directive (highest salience) reinforces it.
-  const liveIntel = [intel.text, esi.text, scout.text, totalCost, priceInfo].filter(Boolean).join("\n\n");
+  const liveIntel = [mcp.text, intel.text, esi.text, scout.text, totalCost, priceInfo].filter(Boolean).join("\n\n");
   // End-of-prompt directives (highest salience), one per active source. Gating +
   // IT/EN text live together, so adding a source is one row here.
   const directives = [
@@ -691,12 +707,13 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // 6. History (plain text for follow-ups) + linkification for the UI.
   history.push({ q: question, a: answer, vec: vector });  // vec → next turn's relevance check
   if (history.length > 6) history.shift();
-  const linked = await linkify(answer, { lang: qLang, entities: [...intel.entities, ...esi.entities] });
+  const linked = await linkify(answer, { lang: qLang, entities: [...mcp.entities, ...intel.entities, ...esi.entities] });
 
   // 7. SOURCES: if the answer comes from a live API, report the actual API (not the
   //    RAG vector neighbors, which would be noise here). Otherwise the RAG documents
   //    (possibly enriched with the prices source if it was used).
   const apiSources = [];
+  if (mcp.text) apiSources.push({ title: mcp.sourceTitle || "eve-kill · MCP (dati live)", type: "api", url: mcp.source || "https://eve-kill.com/" });
   if (intel.text) {
     const e = intel.entities[0];
     apiSources.push({ title: "eve-kill.com · killboard live", type: "api", url: e ? `https://eve-kill.com/${e.type}/${e.id}` : "https://eve-kill.com/" });
@@ -706,7 +723,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   if (priceInfo || totalCost) apiSources.push({ title: "EVE Ref · prezzi di mercato", type: "api", url: "https://everef.net/" });
 
   let sources;
-  if (intel.text || esi.text || scout.text) {
+  if (mcp.text || intel.text || esi.text || scout.text) {
     sources = apiSources;  // answer driven by live entity/system data: no RAG
   } else {
     const seen = new Set();
