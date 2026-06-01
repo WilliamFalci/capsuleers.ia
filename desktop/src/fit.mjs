@@ -74,7 +74,9 @@ function stackBonus(pcts) {
 }
 
 // Ship damage multiplier for a weapon family / a specific drone group (per-level → ×5).
-function shipDamageMult(ship, { weaponKw, droneGroup } = {}) {
+// `family` (energy/hybrid/projectile/missile) matches each bonus to the actual fitted
+// weapon's family, so an "Energy Turret" bonus boosts lasers but not off-bonus weapons.
+function shipDamageMult(ship, { family, droneGroup } = {}) {
   let mult = 1;
   for (const b of ship.bonuses || []) {
     if (!(b.pct && b.value && /damage/i.test(b.text))) continue;
@@ -85,8 +87,10 @@ function shipDamageMult(ship, { weaponKw, droneGroup } = {}) {
       const isSentry = /sentry/.test(droneGroup.toLowerCase());
       const mSentry = /sentry/.test(t), mLMH = /light drone|medium drone|heavy drone/.test(t);
       applies = (!mSentry && !mLMH) || (mSentry && isSentry) || (mLMH && !isSentry);
-    } else if (weaponKw) {
-      applies = weaponKw.test(t);
+    } else if (family) {
+      const bf = bonusWeaponFamily(t);
+      // exact family, or a generic "turret" bonus (applies to any turret family).
+      applies = bf === family || (bf === "turret" && family !== "missile");
     }
     if (applies) mult *= (1 + (b.perLevel ? b.value * 5 : b.value) / 100);
   }
@@ -157,10 +161,10 @@ function computeDPS(ship, items, lk) {
     const ch = charges[it.charge]; if (!ch) continue;
     const dmg = sumDmg(ch.dmg), n = it.qty || 1;
     if (a.dmgMult) {  // turret: charge damage × turret multiplier
-      const sm = shipDamageMult(ship, { weaponKw: /turret|hybrid|projectile|laser|beam|pulse|blaster|railgun|artillery|autocannon/ });
+      const sm = shipDamageMult(ship, { family: weaponFamily(it.group) || "turret" });
       turret += dmg * a.dmgMult / (a.rof / 1000) * SKILL.turret.dmg / SKILL.turret.rof * sm * n;
     } else {          // launcher: missile damage
-      const sm = shipDamageMult(ship, { weaponKw: /missile|rocket|torpedo/ });
+      const sm = shipDamageMult(ship, { family: "missile" });
       missile += dmg / (a.rof / 1000) * SKILL.missile.dmg / SKILL.missile.rof * sm * n;
     }
   }
@@ -179,21 +183,47 @@ function computeDPS(ship, items, lk) {
   return total > 0 ? { total: Math.round(total), turret: Math.round(turret), missile: Math.round(missile), drone: Math.round(drone) } : null;
 }
 
-// Does the fit use the ship's combat bonuses? Returns lines [{text, used}].
+// Weapon family of a turret/launcher module, from its dogma group ("Energy Weapon",
+// "Hybrid Weapon", "Projectile Weapon", "Missile Launcher …"). Null = not a weapon.
+// NB: the group is the family marker — laser turrets are "Energy Weapon" (no "laser"
+// in the name), so matching on weapon NAMES instead of the group misses them.
+function weaponFamily(group) {
+  const g = (group || "").toLowerCase();
+  if (/energy weapon/.test(g)) return "energy";
+  if (/hybrid weapon/.test(g)) return "hybrid";
+  if (/projectile weapon/.test(g)) return "projectile";
+  if (/missile|launcher/.test(g)) return "missile";
+  return null;
+}
+// Weapon family a ship bonus refers to, from its text. A bonus that only says "turret"
+// (no specific family) applies to any turret. Null = not a weapon/drone bonus.
+function bonusWeaponFamily(t) {
+  if (/drone/.test(t)) return "drone";
+  if (/energy turret|laser|pulse|beam/.test(t)) return "energy";
+  if (/hybrid|railgun|blaster/.test(t)) return "hybrid";
+  if (/projectile|artillery|autocannon/.test(t)) return "projectile";
+  if (/missile|rocket|torpedo/.test(t)) return "missile";
+  if (/turret/.test(t)) return "turret";  // generic turret bonus → any turret family
+  return null;
+}
+
+// Does the fit use the ship's combat bonuses? Matches each weapon bonus to the FAMILY
+// of the fitted weapons (by dogma group), so e.g. a Paladin's "Large Energy Turret"
+// bonus is correctly recognized as used when Mega Pulse Lasers are fitted.
+// Returns lines [{text, used}].
 function bonusUsage(ship, items) {
   const bonuses = (ship.bonuses || []).filter((b) => /damage|rate of fire|hitpoint|resist|repair|booster|tracking|optimal|missile|drone/i.test(b.text));
   if (!bonuses.length) return null;
   const hasDrones = items.some((i) => i.kind === "drone");
-  const wg = items.filter((i) => i.kind === "module" && i.attrs?.rof).map((i) => (i.group || "").toLowerCase());
-  const usesMissiles = wg.some((g) => /missile|launcher|rocket/.test(g));
-  const usesTurrets = wg.some((g) => /turret|laser|hybrid|projectile|cannon|artillery|blaster|railgun|beam|pulse/.test(g));
+  const families = new Set(items.filter((i) => i.kind === "module" && i.attrs?.rof).map((i) => weaponFamily(i.group)).filter(Boolean));
+  const anyTurret = families.has("energy") || families.has("hybrid") || families.has("projectile");
   const out = [];
   for (const b of bonuses) {
-    const t = b.text.toLowerCase();
+    const fam = bonusWeaponFamily(b.text.toLowerCase());
     let used = null;
-    if (/drone/.test(t)) used = hasDrones;
-    else if (/missile|rocket|torpedo/.test(t)) used = usesMissiles;
-    else if (/turret|hybrid|projectile|laser|beam|pulse|blaster|railgun|artillery|autocannon/.test(t)) used = usesTurrets;
+    if (fam === "drone") used = hasDrones;
+    else if (fam === "turret") used = anyTurret;       // generic turret bonus
+    else if (fam) used = families.has(fam);            // energy/hybrid/projectile/missile
     if (used !== null) out.push({ text: b.text, used });
   }
   return out.length ? out : null;
