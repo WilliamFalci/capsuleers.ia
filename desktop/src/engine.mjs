@@ -10,7 +10,7 @@ import { intelFor, intelForCandidate } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
 import { maybeMcp, resetDoctrineMemory } from "./mcp-intel.mjs";
-import { maybeWorkbench, resetFitMemory } from "./eveworkbench.mjs";
+import { maybeWorkbench, fitIntent, runFitSearch, resetFitMemory } from "./eveworkbench.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -695,9 +695,25 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // eve-kill MCP analytics (dossier archetypes, route danger, war report, wingmates,
   // battles, meta, killmail story/forensics…). { text, entities, source, sourceTitle }.
   let mcp = await maybeMcp(question, standalone);
-  // EVE Workbench community-fit search ("voglio un fit PvP per la Vagabond"). Runs only when no
-  // MCP intent fired; folds into `mcp` so the card/EFT/theory plumbing below is shared.
+  // EVE Workbench drill-down ("specifiche del #2") — folds into `mcp` like other live blocks.
   if (!mcp.text) { const wb = await maybeWorkbench(question); if (wb.text) mcp = wb; }
+  // EVE Workbench fit search. The ship is taken from the RAG ship doc (reliable even when named
+  // mid-sentence, e.g. "what's the Caracal bonus and how do I fit it"). An explicit request
+  // ("voglio un fit per…") is PRIMARY (the fit list is the answer); a fit question inside a
+  // knowledge query is SUPPLEMENTARY (keep the RAG answer + attach the fit-list card).
+  let fitSuggest = null;
+  if (!mcp.text) {
+    const fi = fitIntent(question);
+    if (fi) {
+      const ship = hits.find((h) => h.type === "ship")?.title;
+      const card = ship ? await runFitSearch(ship, fi.tag) : null;
+      if (card && fi.mode === "primary") {
+        mcp = { text: `INTEL EVE Workbench (dati live) — fit per ${ship}${fi.tag ? ` (${fi.tag})` : ""}:\n`
+          + `${card.items.length} fit della community (numerati #1–#${card.items.length}). Di' all'utente che può chiedere «specifiche del #X» per il fit completo in EFT e l'analisi.\nFonte: https://eveworkbench.com/`,
+          entities: [], source: "https://eveworkbench.com/", sourceTitle: "eveworkbench.com · fit community (dati live)", cards: card };
+      } else if (card) fitSuggest = card;
+    }
+  }
   // A matched MCP relational/analytic intent (e.g. "chi uccide X", "X vs Y") takes
   // precedence over the generic killboard intel for the same name → don't run both.
   const intel = mcp.text ? { text: "", entities: [], kills: [] } : await maybeIntel(question);  // { text, entities, kills }
@@ -768,6 +784,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     { on: !!(mcp.cards || mcp.kills || intel.card),
       it: "\nI risultati dettagliati sono mostrati come SCHEDA/LISTA sotto la tua risposta: scrivi SOLO una breve frase introduttiva (1 riga), NON elencare i singoli risultati e NON ripetere i numeri.",
       en: "\nThe detailed results are shown as a CARD/LIST below your answer: write ONLY a short one-line intro, do NOT enumerate the individual results and do NOT repeat the numbers." },
+    { on: !!fitSuggest,
+      it: "\nSotto la tua risposta è mostrata una LISTA di fit della community (EVE Workbench) per questa nave: rispondi normalmente alla domanda, poi in chiusura invita l'utente a guardare la lista e a chiedere «specifiche del #X» per il fit completo e l'analisi. NON elencare i singoli fit.",
+      en: "\nA community fit LIST (EVE Workbench) for this ship is shown below your answer: answer the question normally, then close by inviting the user to look at the list and ask \"specs of #X\" for the full fit and analysis. Do NOT enumerate the fits." },
     { on: !!scout.text,
       it: "\nPer un collegamento Thera/Turnur indica SEMPRE entrambe le signature: quella di ENTRATA (da scansionare nel sistema k-space) e quella di USCITA (da scansionare in Thera/Turnur). Se i dati EVE-Scout contengono un AVVISO (⚠, es. il riferimento è una regione/costellazione e non un sistema), riportalo chiaramente all'utente.",
       en: "\nFor a Thera/Turnur connection ALWAYS give both wormhole signatures: the ENTRY one (to scan in the k-space system) and the EXIT one (to scan in Thera/Turnur). If the EVE-Scout data contains a WARNING (⚠, e.g. the reference is a region/constellation, not a system), relay it clearly to the user." },
@@ -858,5 +877,5 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
       .slice(0, 5).map((h) => ({ title: h.title, type: h.type, url: h.url }));
     sources = [...apiSources, ...rag];
   }
-  return { answer: linked, sources, kills: (mcp.kills?.length ? mcp.kills : intel.kills), cards: mcp.cards || intel.card || null };
+  return { answer: linked, sources, kills: (mcp.kills?.length ? mcp.kills : intel.kills), cards: mcp.cards || intel.card || fitSuggest || null };
 }

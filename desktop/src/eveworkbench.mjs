@@ -49,12 +49,6 @@ async function getJson(path) {
 }
 
 const clean = (s) => (s || "").replace(/["'?.!,;:]+$/g, "").replace(/^["'\s]+/, "").trim();
-// Strips leading articles + a trailing need word so "la vagabond pvp" → "vagabond".
-function shipName(s) {
-  let n = clean(s).replace(/^(?:una?|un['’]?|la|lo|il|le|gli|i|l['’]|the|a|an)\s+/i, "");
-  n = n.replace(/\s+(?:pvp|pve|ratting|mining|exploration|esplorazione|wormhole|incursion\w*|abyss\w*|economic\w*|economic|cheap|barato|t1|t2|meta|fit|fitting|loadout)$/i, "").trim();
-  return n;
-}
 
 /** POST search → normalized fit list. */
 export async function searchFits({ query, tags, take = 8 }) {
@@ -109,15 +103,35 @@ function resolveFit(needle, fits) {
   return best || fits[0] || null;
 }
 
-/**
- * Detects a "fit by need" request and answers it. Returns a live block or EMPTY.
- *  • DRILL-DOWN (gated on a prior search): "specifiche del #2" / "fit del primo" → stats + EFT.
- *  • SEARCH: "voglio/cercami/consigliami un fit[ting] [need] per la <nave>" → fit-list card.
- */
+// Fit-intent classifier for a question. Returns { mode, tag } or null.
+//  • 'primary'       — a direct "give me a fit" request → the fit list IS the answer.
+//  • 'supplementary' — fitting asked inside a knowledge question ("what's X's bonus and how
+//                      do I fit it") → keep the RAG answer and ATTACH the fit list as a card.
+const FIT_WORD = /\bfit\w*\b|\bloadout\b|\bequipaggiament\w*\b|\bcome\s+(?:si\s+)?(?:fitt\w*|mont\w*|equipaggi\w*|arm\w*)\b|\bhow\s+(?:do\s+i|to|should\s+i)\s+(?:fit|equip)\b/i;
+const FIT_REQUEST = /\b(?:vog[lh]io|cerca\w*|consiglia\w*|trova\w*|dammi|suggerisci\w*|mostra\w*|propon\w*|i\s+want|find\s+me|recommend|suggest|gimme)\b/i;
+export function fitIntent(question) {
+  if (!FIT_WORD.test(question)) return null;
+  return { mode: FIT_REQUEST.test(question) ? "primary" : "supplementary", tag: needToTag(question) };
+}
+
+// Runs the search for an already-resolved ship (the engine takes it from the RAG ship doc, which
+// is reliable even when the ship is named mid-sentence). Returns a 'fitlist' card or null, and
+// remembers the results so "specifiche del #N" can drill in.
+export async function runFitSearch(ship, tag) {
+  if (!ship) return null;
+  const fits = await searchFits({ query: ship, tags: tag, take: 8 });
+  if (!fits.length) return null;
+  resetDoctrineMemory();                 // a fit search becomes the active "specs" context
+  lastFitSearch = { ship, tag, fits };
+  return { kind: "fitlist", ship, tag, items: fits };
+}
+
+/** DRILL-DOWN only: "specifiche del #2" / "fit del primo" → computed stats card + EFT. Gated on
+ *  a prior fit search (lastFitSearch). The SEARCH itself is driven by the engine (fitIntent +
+ *  runFitSearch) because it needs the RAG-resolved ship. Returns a live block or EMPTY. */
 export async function maybeWorkbench(question) {
   const q = question;
   try {
-    // DRILL-DOWN first (so it isn't swallowed by the search regex).
     if (lastFitSearch?.fits?.length) {
       const m = q.match(/\b(?:specifiche|statistiche|specs?|stats?|dettagli|caratteristiche|scheda|apri|mostra(?:mi)?|fit|fitting)\b[\s\S]*?([\w'’\-# ]{1,30})$/i);
       if (m && /\b(?:#?\d|prim|second|terz|quart|quint|first|second|third|fourth|fifth|specifich|specs?|stats?|dettagli|scheda|apri|mostra)\b/i.test(q)) {
@@ -137,27 +151,6 @@ export async function maybeWorkbench(question) {
         }
       }
     }
-
-    // SEARCH: must mention a fit AND target a ship (after per/della/for…, or a request verb).
-    if (!/\bfit\w*\b/i.test(q)) return EMPTY;
-    const hasVerb = /\b(?:vog[lh]io|cerca\w*|consiglia\w*|trova\w*|dammi|suggerisci\w*|mostra\w*|propon\w*|i\s+want|find|suggest|recommend|gimme|need)\b/i.test(q);
-    const conn = q.match(/\b(?:per|della|dello|del|dell['’]|dei|degli|delle|da|for|of)\s+([\w'’\-. ]{2,40})$/i);
-    if (!conn && !hasVerb) return EMPTY;
-    let ship = shipName(conn ? conn[1] : (q.match(/\bfit\w*\b\s+(?:[a-z]+\s+)?([\w'’\-. ]{2,40})$/i)?.[1] || ""));
-    if (!ship || ship.length < 2) return EMPTY;
-    const tag = needToTag(q);
-    const fits = await searchFits({ query: ship, tags: tag, take: 8 });
-    if (!fits.length) return EMPTY;
-    resetDoctrineMemory();                 // a fit search becomes the active "specs" context
-    lastFitSearch = { ship, tag, fits };
-    const label = `fit per ${ship}${tag ? ` (${tag})` : ""} da EVE Workbench`;
-    const body = `${fits.length} fit della community trovati, numerati #1–#${fits.length} nella lista sotto. `
-      + `Di' all'utente che può chiedere «specifiche del #X» (es. «specifiche del #1») per ottenere il fitting completo in EFT e l'analisi di quel fit (DPS, gittata, tank, velocità).`;
-    return {
-      text: `INTEL EVE Workbench (dati live) — ${label}:\n${body}\nFonte: https://eveworkbench.com/`,
-      entities: [], source: "https://eveworkbench.com/", sourceTitle: "eveworkbench.com · fit community (dati live)",
-      cards: { kind: "fitlist", ship, tag, items: fits },
-    };
   } catch { /* never break a chat answer over a live-data failure */ }
   return EMPTY;
 }
