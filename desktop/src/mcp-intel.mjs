@@ -190,6 +190,52 @@ function clustersFromDetect(d) {
   })).filter((c) => c.killmail_id);
 }
 
+// find_battles → structured cards (drawn client-side, not narrated as a wall of text).
+function battleCards(d) {
+  return (d?.battles || []).slice(0, 12).map((b) => ({
+    id: b.battle_id,
+    href: b.url || (b.battle_id ? `https://eve-kill.com/battle/${b.battle_id}` : null),
+    system: b.system?.name || null,
+    region: b.system?.region_name || null,
+    multiParty: !!b.is_multi_party,
+    killCount: b.kill_count ?? null,
+    durationMin: b.duration_minutes ?? null,
+    iskDestroyed: b.total_isk_destroyed ?? null,
+    iskPerMin: b.intensity_isk_per_minute ?? null,
+    alliances: b.alliances_involved ?? null,
+    corporations: b.corporations_involved ?? null,
+    topAlliance: b.top_alliance_by_isk?.alliance_id ? {
+      id: b.top_alliance_by_isk.alliance_id,
+      name: b.top_alliance_by_isk.name,
+      ticker: b.top_alliance_by_isk.ticker,
+    } : null,
+    start: b.start_time || null,
+    end: b.end_time || null,
+  }));
+}
+
+// expensive_losses / entity_kills → the kill-card shape renderKills() expects (ship render +
+// victim portrait/corp logo + system + value + time + eve-kill link). Tolerates both shapes:
+// expensive_losses carries victim_ship; entity_kills nests ship under victim.ship_*.
+function killCardItems(arr) {
+  return (arr || []).slice(0, 20).map((k) => {
+    const v = k.victim || {};
+    const ship = k.victim_ship || { type_id: v.ship_type_id, name: v.ship_name };
+    const isChar = v.character_id != null;
+    return {
+      killmailId: k.killmail_id,
+      isCharacter: isChar,
+      victimId: isChar ? v.character_id : v.corporation_id,
+      shipId: ship.type_id,
+      shipName: ship.name || `type ${ship.type_id ?? "?"}`,
+      victimName: v.character_name || v.corporation_name || "?",
+      system: k.system?.name || "",
+      value: k.total_value ?? 0,
+      time: k.time,
+    };
+  }).filter((k) => k.killmailId && k.shipId);
+}
+
 // Builds the computed-specs block (+ EFT) for a resolved cluster. Returns the MCP block or null.
 async function specsBlock(target, entityLabel) {
   const res = await doctrineFitStats(target);
@@ -358,15 +404,23 @@ export async function maybeMcp(question, standalone = question) {
         if (d) return block(`battle report #${bid[1]}`, d);
       }
       if (/\b(ultime?\s+battagli\w*|battagli\w*\s+(?:recenti|più\s+grandi|grosse)|recent\s+battles?|biggest\s+battles?|latest\s+battles?|grandi\s+battagli\w*)\b/i.test(q)) {
-        const d = await callTool("find_battles", { sort: /\b(recenti|recent|latest|ultime)\b/i.test(q) ? "recent" : "isk" });
-        return d ? block("battaglie recenti (per ISK distrutti)", d) : EMPTY;
+        const recent = /\b(recenti|recent|latest|ultime)\b/i.test(q);
+        const d = await callTool("find_battles", { sort: recent ? "recent" : "isk" });
+        if (!d) return EMPTY;
+        const items = battleCards(d);
+        if (!items.length) return block("battaglie recenti", d);
+        const header = `battaglie ${recent ? "recenti" : "più grandi (per ISK distrutti)"}`;
+        return { ...blockBody(header, `${items.length} battaglie — vedi le schede sotto.`, d), cards: { kind: "battles", items } };
       }
     }
 
-    // 8) EXPENSIVE LOSSES — most valuable killmails.
+    // 8) EXPENSIVE LOSSES — most valuable killmails → kill cards (ship + victim + link).
     if (/\b(kill\w*\s+(pi[ùu]\s+)?costos\w*|perdit\w*\s+(pi[ùu]\s+)?costos\w*|navi\s+(pi[ùu]\s+)?costos\w*\s+pers\w*|most\s+expensive\s+(kills?|losses?|ships?)|biggest\s+(kills?|losses?)|priciest)\b/i.test(q)) {
       const d = await callTool("expensive_losses", {});
-      return d ? block("kill più costosi (ultimi 30 giorni)", d) : EMPTY;
+      if (!d) return EMPTY;
+      const kills = killCardItems(d?.kills);
+      if (!kills.length) return block("kill più costosi (ultimi 30 giorni)", d);
+      return { ...blockBody("kill più costosi (ultimi 30 giorni)", `I ${kills.length} kill più costosi — vedi la lista sotto.`, d), kills };
     }
 
     // 9) CHARACTER/CORP HISTORY — inferred membership timeline.
@@ -501,7 +555,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("entity_kills", { entity });
-          return d ? block(`ultimi kill di ${entity}`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const kills = killCardItems(d?.kills);
+          if (!kills.length) return block(`ultimi kill di ${entity}`, d);
+          return { ...blockBody(`ultimi kill di ${entity}`, `Ultimi ${kills.length} kill di ${entity} — vedi la lista sotto.`, d), kills };
         }
       }
     }

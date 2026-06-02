@@ -187,6 +187,26 @@
 
     /* Kill card */
     .kills { margin-top: .8rem; display: flex; flex-direction: column; gap: 5px; }
+    /* Generic data cards (battles etc.) — a responsive grid, drawn client-side. */
+    .msg.bot.with-cards { max-width: 100%; }
+    .cardgrid { margin-top: .7rem; display: grid; gap: .6rem; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); width: 100%; }
+    .gcard { display: block; text-decoration: none; color: var(--text); background: #0e1014;
+             border: 1px solid var(--line); border-left: 3px solid var(--orange); border-radius: 3px; padding: .6rem .7rem; }
+    a.gcard:hover { border-color: var(--orange-dim); background: #12151b; }
+    .gc-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .gc-title { font-family: ui-monospace, monospace; font-weight: 700; color: var(--orange); }
+    .gc-badge { font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; color: #1a0d02;
+                background: var(--orange); border-radius: 2px; padding: .08rem .32rem; white-space: nowrap; }
+    .gc-sub { font-size: .76rem; color: #c4c7c5; margin: .1rem 0 .5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem .2rem; }
+    .gc-s { display: flex; flex-direction: column; line-height: 1.15; }
+    .gc-v { font-family: ui-monospace, monospace; font-weight: 700; font-size: .84rem; color: #e6e9ee; }
+    .gc-l { font-size: .58rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+    .gc-ally { display: flex; align-items: center; gap: .35rem; margin-top: .55rem; font-size: .75rem; color: #c4c7c5;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gc-ally img { width: 18px; height: 18px; border-radius: 2px; background: #0a0b0d; flex: 0 0 auto; }
+    .gc-ally i { color: var(--muted); font-style: normal; font-family: ui-monospace, monospace; font-size: .7rem; }
+    .gc-win { display: block; margin-top: .4rem; font-family: ui-monospace, monospace; font-size: .68rem; color: var(--muted); }
     .kill {
       display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
       grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
@@ -526,8 +546,9 @@
         Tutti i nomi di prodotti, loghi e marchi citati appartengono ai rispettivi proprietari.
         Fenris Creations non è in alcun modo responsabile del contenuto o del funzionamento di questa
         applicazione, né può essere ritenuta responsabile per eventuali danni derivanti dal suo utilizzo.</p>
-        <p data-i18n-html="aboutDisc3">Dati: EVE Static Data Export (Fenris Creations) ed EVE University Wiki (CC-BY-SA). Le risposte sono
-        generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.</p>
+        <p data-i18n-html="aboutDisc3">Dati e servizi: EVE Static Data Export ed ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA),
+        eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref (prezzi), eve-kill (killboard + analisi MCP) ed EVE-Scout (Thera/Turnur).
+        Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.</p>
       </div>
     </div>
   </div>
@@ -916,6 +937,42 @@
       return wrap;
     }
 
+    // Generic data cards (currently: recent battles). Drawn client-side from a structured
+    // payload so the model only writes a one-line intro instead of a wall of text.
+    const hhmm = (s) => (String(s || "").match(/\d{2}:\d{2}/) || [""])[0];
+    function battleCardEl(b) {
+      const C = L.cards;
+      const el = document.createElement(b.href ? "a" : "div");
+      el.className = "gcard";
+      if (b.href) { el.href = b.href; el.title = "eve-kill.com"; }
+      const stat = (label, val) => val == null || val === "" ? "" :
+        `<div class="gc-s"><span class="gc-v">${esc(String(val))}</span><span class="gc-l">${esc(label)}</span></div>`;
+      const ally = b.topAlliance?.id
+        ? `<div class="gc-ally"><img src="${IMG}/alliances/${b.topAlliance.id}/logo?size=32" alt="" />`
+          + `<span>${esc(b.topAlliance.name || "")}${b.topAlliance.ticker ? ` <i>[${esc(b.topAlliance.ticker)}]</i>` : ""}</span></div>`
+        : "";
+      const win = (b.start && b.end) ? `<span class="gc-win">${hhmm(b.start)} → ${hhmm(b.end)}</span>` : "";
+      el.innerHTML =
+        `<div class="gc-head"><span class="gc-title">#${esc(String(b.id ?? "?"))}</span>`
+        + (b.multiParty ? `<span class="gc-badge">${esc(C.multiParty)}</span>` : "") + `</div>`
+        + ((b.system || b.region) ? `<div class="gc-sub">${esc(b.system || "")}${b.region ? ` · ${esc(b.region)}` : ""}</div>` : "")
+        + `<div class="gc-stats">`
+        + stat(C.kill, b.killCount)
+        + stat(C.duration, b.durationMin != null ? b.durationMin + "m" : null)
+        + stat(C.isk, b.iskDestroyed != null ? fmtIsk(b.iskDestroyed) : null)
+        + stat(C.iskMin, b.iskPerMin != null ? fmtIsk(b.iskPerMin) : null)
+        + stat(C.alliances, b.alliances)
+        + stat(C.corps, b.corporations)
+        + `</div>` + ally + win;
+      return el;
+    }
+    function renderCards(cards) {
+      const wrap = document.createElement("div");
+      wrap.className = "cardgrid";
+      if (cards.kind === "battles") for (const b of cards.items) wrap.appendChild(battleCardEl(b));
+      return wrap;
+    }
+
     function bubble(cls) {
       const d = document.createElement("div");
       d.className = "msg " + cls;
@@ -1014,7 +1071,7 @@
         aboutCredit: 'Creato da <a href="https://capsuleers.app/it/character/789877270" target="_blank" rel="noopener">TremalJack</a> e dal supporto della community di EVE Online.',
         aboutDisc1: "<b>Strumento non ufficiale</b> creato da fan, non affiliato né approvato da Fenris Creations.",
         aboutDisc2: "EVE Online e il logo EVE sono marchi registrati di Fenris Creations. Tutti i diritti riservati. Tutti i nomi di prodotti, loghi e marchi citati appartengono ai rispettivi proprietari. Fenris Creations non è in alcun modo responsabile del contenuto o del funzionamento di questa applicazione, né può essere ritenuta responsabile per eventuali danni derivanti dal suo utilizzo.",
-        aboutDisc3: "Dati: EVE Static Data Export (Fenris Creations) ed EVE University Wiki (CC-BY-SA). Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.",
+        aboutDisc3: "Dati e servizi: EVE Static Data Export ed ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref (prezzi), eve-kill (killboard + analisi MCP) ed EVE-Scout (Thera/Turnur). Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.",
         modelsTitle: "MODELLO <b>IA</b>",
         modelsHint: "Stima sulla VRAM <b>libera ora</b>: più layer entrano in GPU, più la risposta è veloce. Chiudere altre app che usano la GPU (browser, Steam…) libera VRAM e accelera i modelli più grandi. I tempi sono indicativi per una risposta tipica.<br>Il modello che scegli diventa il <b>predefinito</b> e verrà riusato a ogni riavvio dell'app.",
         localTitle: "INTEL <b>LOCAL</b>",
@@ -1039,6 +1096,7 @@
         openKillmail: "Apri il killmail su eve-kill.com",
         sources: "FONTI //",
         fitCopy: "Copia", fitCopied: "Copiato!",
+        cards: { kill: "Kill", duration: "Durata", isk: "ISK distrutti", iskMin: "ISK/min", alliances: "Alleanze", corps: "Corp", multiParty: "Multi-party" },
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1084,7 +1142,7 @@
         aboutCredit: 'Created by <a href="https://capsuleers.app/en/character/789877270" target="_blank" rel="noopener">TremalJack</a> with the support of the EVE Online community.',
         aboutDisc1: "<b>Unofficial tool</b> made by fans, not affiliated with nor endorsed by Fenris Creations.",
         aboutDisc2: "EVE Online and the EVE logo are registered trademarks of Fenris Creations. All rights reserved. All product names, logos and brands mentioned are property of their respective owners. Fenris Creations is in no way responsible for the content or operation of this application, nor can it be held liable for any damage arising from its use.",
-        aboutDisc3: "Data: EVE Static Data Export (Fenris Creations) and EVE University Wiki (CC-BY-SA). Answers are generated by a local AI and may contain errors: <b>always verify in-game</b>.",
+        aboutDisc3: "Data & services: EVE Static Data Export and ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (PvE missions), Anoikis (wormholes), EVE Ref (prices), eve-kill (killboard + MCP analytics) and EVE-Scout (Thera/Turnur). Answers are generated by a local AI and may contain errors: <b>always verify in-game</b>.",
         modelsTitle: "<b>AI</b> MODEL",
         modelsHint: "Estimate on the VRAM <b>free now</b>: the more layers fit in GPU, the faster the reply. Closing other apps that use the GPU (browser, Steam…) frees VRAM and speeds up bigger models. Times are indicative for a typical answer.<br>The model you choose becomes the <b>default</b> and is reused on every app restart.",
         localTitle: "<b>LOCAL</b> INTEL",
@@ -1109,6 +1167,7 @@
         openKillmail: "Open the killmail on eve-kill.com",
         sources: "SOURCES //",
         fitCopy: "Copy", fitCopied: "Copied!",
+        cards: { kill: "Kills", duration: "Duration", isk: "ISK destroyed", iskMin: "ISK/min", alliances: "Alliances", corps: "Corps", multiParty: "Multi-party" },
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,
@@ -1229,6 +1288,7 @@
         current.appendChild(s);
       }
       if (!res.error && res.kills?.length) current.appendChild(renderKills(res.kills));
+      if (!res.error && res.cards?.items?.length) { current.classList.add("with-cards"); current.appendChild(renderCards(res.cards)); }
       current = null; body = null;
       q.disabled = false; send.disabled = false; q.focus();
     }
