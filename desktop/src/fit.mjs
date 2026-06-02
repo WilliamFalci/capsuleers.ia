@@ -368,3 +368,95 @@ export async function describeDoctrineFit(eft) {
   lines.push(...offenseLines, ...coreStatLines(base.derived, droneInfo, isStructure));
   return lines.join("\n");
 }
+
+// ── Structured stats (for the VISUAL fit-stats card) ─────────────────────────
+const pctR = (r) => ({ em: pct(r.em), th: pct(r.thermal), kin: pct(r.kinetic), exp: pct(r.explosive) });
+function tankData(t) {
+  if (!t) return null;
+  const o = {};
+  if (t.shieldRepairPerSecond > 0) o.shield = r0(t.shieldRepairPerSecond);
+  if (t.armorRepairPerSecond > 0) o.armor = r0(t.armorRepairPerSecond);
+  if (t.hullRepairPerSecond > 0) o.hull = r0(t.hullRepairPerSecond);
+  return Object.keys(o).length ? o : null;
+}
+function offenseData(o, label, ammo) {
+  if (!o || o.totalDps <= 0) return null;
+  const km = (m) => m > 0 ? +(m / 1000).toFixed(1) : null;
+  return {
+    label, ammo,
+    dps: r0(o.totalDps),
+    sustained: (o.totalSustainedDps > 0 && Math.abs(o.totalSustainedDps - o.totalDps) > 1) ? r0(o.totalSustainedDps) : null,
+    alpha: o.alphaStrike > 0 ? r0(o.alphaStrike) : null,
+    weaponDps: o.weaponDps > 0 ? r0(o.weaponDps) : null,
+    droneDps: o.droneDps > 0 ? r0(o.droneDps) : null,
+    optimalKm: km(o.weaponOptimal), falloffKm: km(o.weaponFalloff),
+    tracking: o.weaponTracking != null ? +o.weaponTracking.toFixed(4) : null,
+    rangeKm: km(o.missileRange),
+    explVel: o.explosionVelocity != null ? r0(o.explosionVelocity) : null,
+    explRadius: o.explosionRadius != null ? r0(o.explosionRadius) : null,
+  };
+}
+
+/** Same compute as describeDoctrineFit, but returns STRUCTURED stats for a visual card
+ *  plus a one-line summary (for the model's theorycrafting context). Returns { card, summary }
+ *  or null. The card.kind is 'fitstats'. */
+export async function doctrineFitStatsData(eft) {
+  let dataset, parsed;
+  try { dataset = await loadBundledDataset(); parsed = engineParseEft(eft, dataset); } catch { return null; }
+  if (!parsed?.fit) return null;
+  const fit = parsed.fit;
+  for (const m of fit.modules) { const ty = dataset.getType(m.typeID); if (ty) m.state = defaultStateForModule(ty, dataset.effects); }
+  const droneInfo = launchDrones(fit, dataset);
+  _allVProfile ??= buildAllVSkillProfile(dataset);
+  const named = parseEft(eft) || { ship: dataset.getType(fit.shipTypeID)?.name || "Nave" };
+  const shipType = dataset.getType(fit.shipTypeID);
+  const grp = shipType && dataset.groups.get(shipType.groupID);
+
+  let base;
+  try { base = computeFit(fit, dataset, { skillProfile: _allVProfile }); } catch { return null; }
+  const isStructure = !!base.derived.structure;
+
+  let damage = [];
+  const ext = await pickAmmoExtremes(fit, dataset);
+  if (ext && ext.max.id !== ext.min.id) {
+    setWeaponCharge(ext.weaponMods, ext.max.id, ext.charges);
+    const maxC = computeFit(fit, dataset, { skillProfile: _allVProfile });
+    setWeaponCharge(ext.weaponMods, ext.min.id, ext.charges);
+    const minC = computeFit(fit, dataset, { skillProfile: _allVProfile });
+    damage = [offenseData(maxC.derived.offense, "max", ext.max.name), offenseData(minC.derived.offense, "min", ext.min.name)].filter(Boolean);
+  } else if (ext) {
+    setWeaponCharge(ext.weaponMods, ext.max.id, ext.charges);
+    damage = [offenseData(computeFit(fit, dataset, { skillProfile: _allVProfile }).derived.offense, "only", ext.max.name)].filter(Boolean);
+  } else {
+    damage = [offenseData(base.derived.offense, "only", null)].filter(Boolean);
+  }
+
+  const d = base.derived, df = d.defense;
+  const card = {
+    kind: "fitstats",
+    ship: named.ship, shipClass: grp ? grp.name : null,
+    damage,
+    ehp: {
+      total: r0(df.shield.ehpUniform + df.armor.ehpUniform + df.hull.ehpUniform),
+      shield: r0(df.shield.ehpUniform), armor: r0(df.armor.ehpUniform), hull: r0(df.hull.ehpUniform),
+      resists: { shield: pctR(df.shield.resistances), armor: pctR(df.armor.resistances), hull: pctR(df.hull.resistances) },
+    },
+    activeTank: tankData(d.tank),
+    passiveShield: d.tank?.passiveShieldRegenPeak > 0 ? r0(d.tank.passiveShieldRegenPeak) : null,
+    cap: d.capacitor?.capacity > 0
+      ? { stable: !!d.capacitor.stable, pct: pct(d.capacitor.stablePercent), secondsToEmpty: d.capacitor.stable ? null : r0(d.capacitor.secondsToEmpty) }
+      : null,
+    nav: isStructure ? null : { speed: r0(d.navigation.maxVelocity), align: r1(d.navigation.alignTimeSeconds), warp: r1(d.navigation.warpSpeed), agility: r1(d.navigation.agility) },
+    targeting: isStructure ? null : { rangeKm: r1(d.targeting.maxTargetingRange / 1000), locked: d.targeting.maxLockedTargets, sig: r0(d.targeting.signatureRadius), scanRes: r0(d.targeting.scanResolution), sensor: `${d.targeting.sensorType} ${r0(d.targeting.sensorStrength)}` },
+    drones: droneInfo.active > 0 ? { active: droneInfo.active, controlRangeKm: r1(d.drones.controlRange / 1000) } : null,
+  };
+
+  const dmg = card.damage.map((x) => {
+    const lbl = x.label === "max" ? "alto danno" : x.label === "min" ? "lunga gittata" : "";
+    const rng = x.rangeKm != null ? `gittata ${x.rangeKm}km` : x.optimalKm != null ? `ottimale ${x.optimalKm}km${x.falloffKm ? `+${x.falloffKm}` : ""}` : "";
+    return `${lbl}${x.ammo ? ` (${x.ammo})` : ""} ${x.dps} dps${rng ? `, ${rng}` : ""}`;
+  }).join("; ");
+  const summary = `${card.ship}${card.shipClass ? ` (${card.shipClass})` : ""}: ${dmg}. EHP ~${card.ehp.total}`
+    + `${card.cap ? `, cap ${card.cap.stable ? "stabile" : "instabile"}` : ""}${card.nav ? `, ${card.nav.speed} m/s` : ""}.`;
+  return { card, summary };
+}

@@ -10,7 +10,7 @@
 // already drops into the RAG context, so the local model narrates a one-line intro and the
 // card/EFT render client-side. Never throws (degrades to no live block).
 import { USER_AGENT as UA } from "./user-agent.mjs";
-import { describeDoctrineFit } from "./fit.mjs";
+import { doctrineFitStatsData } from "./fit.mjs";
 import { resetDoctrineMemory } from "./mcp-intel.mjs";
 
 const API = "https://webapi.eveworkbench.com";
@@ -125,12 +125,13 @@ export async function maybeWorkbench(question) {
         if (target) {
           const built = await getFitEft(target.id);
           if (built) {
-            const body = await describeDoctrineFit(built.eft);
-            if (body) {
+            const stats = await doctrineFitStatsData(built.eft);   // { card, summary }
+            if (stats?.card) {
               const url = `https://eveworkbench.com/fit/${target.id}`;
-              const header = `fit «${target.name}» (${target.shipName}) — EVE Workbench, All V, parità pyfa, danno min/max per munizione`;
-              return { text: `INTEL EVE Workbench (dati live) — ${header}:\n${body}\nFonte: ${url}`,
-                entities: [], source: url, sourceTitle: "eveworkbench.com · fit (dati live)", theory: true, eft: built.eft };
+              const header = `fit «${target.name}» (${target.shipName}) — EVE Workbench`;
+              return { text: `INTEL EVE Workbench (dati live) — ${header}:\n${stats.summary}\nFonte: ${url}`,
+                entities: [], source: url, sourceTitle: "eveworkbench.com · fit (dati live)",
+                cards: { ...stats.card, context: `EVE Workbench · «${target.name}»`, href: url }, theory: true, eft: built.eft };
             }
           }
         }
@@ -149,9 +150,9 @@ export async function maybeWorkbench(question) {
     if (!fits.length) return EMPTY;
     resetDoctrineMemory();                 // a fit search becomes the active "specs" context
     lastFitSearch = { ship, tag, fits };
-    const hint = "\n(Per le statistiche di un fit chiedi: «specifiche del #1» oppure «fit del primo».)";
     const label = `fit per ${ship}${tag ? ` (${tag})` : ""} da EVE Workbench`;
-    const body = `${fits.length} fit della community — vedi la lista sotto.${hint}`;
+    const body = `${fits.length} fit della community trovati, numerati #1–#${fits.length} nella lista sotto. `
+      + `Di' all'utente che può chiedere «specifiche del #X» (es. «specifiche del #1») per ottenere il fitting completo in EFT e l'analisi di quel fit (DPS, gittata, tank, velocità).`;
     return {
       text: `INTEL EVE Workbench (dati live) — ${label}:\n${body}\nFonte: https://eveworkbench.com/`,
       entities: [], source: "https://eveworkbench.com/", sourceTitle: "eveworkbench.com · fit community (dati live)",

@@ -315,6 +315,22 @@
     .fittag { font-size: .6rem; text-transform: uppercase; letter-spacing: .02em; color: #c4c7c5; background: #16191f;
               border: 1px solid var(--line); border-radius: 2px; padding: .05rem .3rem; white-space: nowrap; }
     .fittag.alpha { color: #1a0d02; background: #eab308; border-color: #eab308; font-weight: 700; }
+    .fitrow .fit-n { font-family: ui-monospace, monospace; font-weight: 700; color: var(--orange); font-size: .8rem; }
+    .fitrow { grid-template-columns: auto 32px minmax(0, 1fr) auto auto auto; }
+    .fit-hint { margin-top: .55rem; font-size: .72rem; color: var(--muted); }
+    /* Visual fit-stats panel. */
+    .dmg-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .7rem; }
+    .dmg-box { flex: 1 1 180px; background: #0a0b0d; border: 1px solid var(--line); border-left: 3px solid var(--orange); border-radius: 3px; padding: .5rem .65rem; }
+    .dmg-h { font-size: .64rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+    .dmg-h span { color: #c4c7c5; }
+    .dmg-dps { font-family: ui-monospace, monospace; font-weight: 700; font-size: 1.5rem; color: #ffb066; line-height: 1.1; }
+    .dmg-dps small { font-size: .6rem; color: var(--muted); font-weight: 400; }
+    .dmg-sub { font-size: .72rem; color: #c4c7c5; font-family: ui-monospace, monospace; }
+    .res-tbl { margin-top: .7rem; display: grid; gap: 2px; }
+    .res-row { display: grid; grid-template-columns: 5rem repeat(4, 1fr); gap: .3rem; align-items: center; font-family: ui-monospace, monospace; font-size: .74rem; }
+    .res-row span { text-align: right; }
+    .res-row .res-l { text-align: left; color: var(--muted); font-family: inherit; }
+    .res-head { color: var(--muted); font-size: .62rem; text-transform: uppercase; }
     .kill {
       display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
       grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
@@ -1306,7 +1322,7 @@
       return el;
     }
 
-    // EVE Workbench community fits: ship icon + fit name + ship/class/author + tags + cost.
+    // EVE Workbench community fits: #N index + ship icon + fit name + ship/class/author + tags + cost.
     function fitListEl(c) {
       const C = L.cards;
       const el = document.createElement("div"); el.className = "panel";
@@ -1314,19 +1330,59 @@
       h.textContent = `${C.fitsFor || "Fit"} · ${c.ship}${c.tag ? ` (${c.tag})` : ""}`;
       el.appendChild(h);
       const list = document.createElement("div"); list.className = "elist";
-      for (const f of c.items) {
+      c.items.forEach((f, i) => {
         const row = document.createElement("a"); row.className = "fitrow";
         row.href = `https://eveworkbench.com/fit/${f.id}`; row.title = "eveworkbench.com";
         const tags = (f.tags || []).map((t) => `<span class="fittag">${esc(t)}</span>`).join("");
-        row.innerHTML = `<img src="${entityImg("ship", f.shipId, 32)}" alt="" />`
+        row.innerHTML = `<span class="fit-n">#${i + 1}</span><img src="${entityImg("ship", f.shipId, 32)}" alt="" />`
           + `<div class="fit-main"><span class="fit-name">${esc(f.name)}</span>`
           + `<span class="fit-sub">${esc(f.shipName || "")}${f.shipClass ? ` · ${esc(f.shipClass)}` : ""}${f.author ? ` · ${esc(f.author)}` : ""}</span></div>`
           + (f.alpha ? `<span class="fittag alpha" title="Alpha">α</span>` : "")
           + (tags ? `<span class="fit-tags">${tags}</span>` : "")
           + (f.cost != null ? `<span class="er-m">${fmtIsk(f.cost)}</span>` : "");
         list.appendChild(row);
-      }
+      });
       el.appendChild(list);
+      const foot = document.createElement("div"); foot.className = "fit-hint";
+      foot.textContent = C.fitHint || "";
+      el.appendChild(foot);
+      return el;
+    }
+
+    // Visual fit-stats panel (computed DPS/range, EHP + resists, cap, nav, targeting, drones).
+    function dmgBox(x, C) {
+      const lbl = x.label === "max" ? C.fs.high : x.label === "min" ? C.fs.long : C.fs.dps;
+      const range = x.rangeKm != null ? `${C.fs.range} ${x.rangeKm} km`
+        : x.optimalKm != null ? `${C.fs.optimal} ${x.optimalKm} km${x.falloffKm ? ` +${x.falloffKm}` : ""}` : "";
+      return `<div class="dmg-box"><div class="dmg-h">${esc(lbl)}${x.ammo ? ` · <span>${esc(x.ammo)}</span>` : ""}</div>`
+        + `<div class="dmg-dps">${x.dps}<small> ${esc(C.fs.dps)}</small></div>`
+        + `<div class="dmg-sub">${esc(range)}${x.alpha != null ? `${range ? " · " : ""}${esc(C.fs.alpha)} ${x.alpha}` : ""}</div></div>`;
+    }
+    function fitStatsEl(c) {
+      const C = L.cards, fs = C.fs;
+      const el = document.createElement("div"); el.className = "panel";
+      const head = document.createElement("div"); head.className = "rank-title";
+      head.textContent = `${c.ship}${c.shipClass ? ` · ${c.shipClass}` : ""}${c.context ? ` — ${c.context}` : ""}`;
+      el.appendChild(head);
+      if (c.damage?.length) { const dz = document.createElement("div"); dz.className = "dmg-row"; dz.innerHTML = c.damage.map((x) => dmgBox(x, C)).join(""); el.appendChild(dz); }
+      const grid = document.createElement("div"); grid.className = "gc-stats wide";
+      const cell = (l, v) => v == null || v === "" ? "" : `<div class="gc-s"><span class="gc-v">${esc(String(v))}</span><span class="gc-l">${esc(l)}</span></div>`;
+      grid.innerHTML = cell(fs.ehp, c.ehp ? (+c.ehp.total).toLocaleString() : null)
+        + (c.cap ? cell(fs.cap, c.cap.stable ? `${fs.stable} ${c.cap.pct}%` : `${c.cap.secondsToEmpty}s`) : "")
+        + (c.nav ? cell(fs.speed, c.nav.speed + " m/s") : "")
+        + (c.nav ? cell(fs.align, c.nav.align + " s") : "")
+        + (c.targeting ? cell(fs.targeting, c.targeting.rangeKm + " km") : "")
+        + (c.drones ? cell(fs.drones, `${c.drones.active} · ${c.drones.controlRangeKm} km`) : "")
+        + (c.activeTank ? cell(fs.activeRep, Object.values(c.activeTank).join("/") + "/s") : "")
+        + (c.passiveShield ? cell(fs.passiveRegen, c.passiveShield + "/s") : "");
+      el.appendChild(grid);
+      if (c.ehp?.resists) {
+        const R = c.ehp.resists, rows = [["shield", R.shield], ["armor", R.armor], ["hull", R.hull]].filter(([, r]) => r);
+        const t = document.createElement("div"); t.className = "res-tbl";
+        t.innerHTML = `<div class="res-row res-head"><span></span><span>${fs.em}</span><span>${fs.th}</span><span>${fs.kin}</span><span>${fs.exp}</span></div>`
+          + rows.map(([k, r]) => `<div class="res-row"><span class="res-l">${esc(fs[k])}</span><span>${r.em}%</span><span>${r.th}%</span><span>${r.kin}%</span><span>${r.exp}%</span></div>`).join("");
+        el.appendChild(t);
+      }
       return el;
     }
 
@@ -1343,6 +1399,7 @@
       else if (cards.kind === "versus") wrap.appendChild(versusEl(cards));
       else if (cards.kind === "battlecard") wrap.appendChild(battleReportEl(cards));
       else if (cards.kind === "fitlist") wrap.appendChild(fitListEl(cards));
+      else if (cards.kind === "fitstats") wrap.appendChild(fitStatsEl(cards));
       return wrap;
     }
 
@@ -1480,7 +1537,11 @@
             killed_alliance: "Alleanze più uccise", dies_to_alliance: "Uccisa più spesso da (alleanze)", killed_corporation: "Corp più uccise", dies_to_corporation: "Uccisa più spesso da (corp)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Flotta", blob: "Blob" }, avgFleet: "Flotta media",
           list: { wingmates: "Compagni di volo", prey: "Prede preferite", hunters: "Cacciatori" }, huntingGrounds: "Sistemi di caccia",
-          iskShare: "Quota ISK", contested: "Sistemi contesi", battle: { won: "Vittorioso", lost: "Sconfitto" }, fitsFor: "Fit per" },
+          iskShare: "Quota ISK", contested: "Sistemi contesi", battle: { won: "Vittorioso", lost: "Sconfitto" }, fitsFor: "Fit per",
+          fitHint: "Chiedi «specifiche del #X» (es. «specifiche del #1») per il fitting completo in EFT e l'analisi di quel fit.",
+          fs: { high: "Alto danno", long: "Lunga gittata", dps: "DPS", alpha: "alpha", range: "Gittata", optimal: "Ottimale", ehp: "EHP", cap: "Cap", stable: "stabile",
+            speed: "Velocità", align: "Align", warp: "Warp", targeting: "Targeting", drones: "Droni", activeRep: "Rep attiva", passiveRegen: "Rigen scudo",
+            shield: "Scudo", armor: "Armatura", hull: "Scafo", em: "EM", th: "Th", kin: "Kin", exp: "Exp" } },
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1558,7 +1619,11 @@
             killed_alliance: "Alliances killed most", dies_to_alliance: "Most killed by (alliances)", killed_corporation: "Corps killed most", dies_to_corporation: "Most killed by (corps)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Fleet", blob: "Blob" }, avgFleet: "Avg fleet",
           list: { wingmates: "Wingmates", prey: "Favourite prey", hunters: "Hunters" }, huntingGrounds: "Hunting grounds",
-          iskShare: "ISK share", contested: "Contested systems", battle: { won: "Winner", lost: "Defeated" }, fitsFor: "Fits for" },
+          iskShare: "ISK share", contested: "Contested systems", battle: { won: "Winner", lost: "Defeated" }, fitsFor: "Fits for",
+          fitHint: "Ask \"specs of #X\" (e.g. \"specs of #1\") for that fit's full EFT and analysis.",
+          fs: { high: "High damage", long: "Long range", dps: "DPS", alpha: "alpha", range: "Range", optimal: "Optimal", ehp: "EHP", cap: "Cap", stable: "stable",
+            speed: "Speed", align: "Align", warp: "Warp", targeting: "Targeting", drones: "Drones", activeRep: "Active rep", passiveRegen: "Shield regen",
+            shield: "Shield", armor: "Armor", hull: "Hull", em: "EM", th: "Th", kin: "Kin", exp: "Exp" } },
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,

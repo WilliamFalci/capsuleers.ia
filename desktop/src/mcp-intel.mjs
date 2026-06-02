@@ -16,7 +16,7 @@
 // pulse tools (global/system), the entity_* family (kills/overview/timeline/top) and
 // ships_used, on top of the original killmail/route/war/doctrine/intel-graph set.
 import { callTool } from "./mcp.mjs";
-import { describeDoctrineFit } from "./fit.mjs";
+import { doctrineFitStatsData } from "./fit.mjs";
 import { resetFitMemory } from "./eveworkbench.mjs";
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
@@ -177,8 +177,8 @@ async function doctrineFitStats(cluster) {
   const ft = await callTool("killmail_fitting", { killmail_id: cluster.killmail_id, format: "eft" });
   const eft = extractEft(ft);
   if (!eft) return null;
-  const body = await describeDoctrineFit(eft);
-  return body ? { body, eft } : null;
+  const stats = await doctrineFitStatsData(eft);   // { card, summary }
+  return stats ? { ...stats, eft } : null;
 }
 
 // Normalises a doctrine_detect result into the slim cluster shape we cache in lastDoctrine.
@@ -358,10 +358,11 @@ function rankCard(d) {
 // Builds the computed-specs block (+ EFT) for a resolved cluster. Returns the MCP block or null.
 async function specsBlock(target, entityLabel) {
   const res = await doctrineFitStats(target);
-  if (!res?.body) return null;
-  const header = `specifiche dottrina ${target.name} di ${entityLabel} (All V, parità pyfa, danno min/max per munizione)`;
-  // theory → theorycrafting directive; eft → engine appends the verbatim fit block.
-  return { ...blockBody(header, res.body, target), theory: true, eft: res.eft };
+  if (!res?.card) return null;
+  const header = `specifiche dottrina ${target.name} di ${entityLabel}`;
+  // cards → visual fit-stats panel; theory → theorycrafting-only directive; eft → engine
+  // appends the verbatim fit block. summary is the model's context (not shown verbatim).
+  return { ...blockBody(header, res.summary, target), cards: { ...res.card, context: `dottrina · ${entityLabel}` }, theory: true, eft: res.eft };
 }
 
 // ── Dispatcher ───────────────────────────────────────────────────────────────
