@@ -8,7 +8,8 @@
 //  • me_* tools — they target "your" character; the app has no login/pilot context.
 //  • item_info/ship_info/system_info — ships/items/systems are answered offline from the
 //    RAG index + local SDE; routing them online would break the offline-first stance.
-//  • Static fit math stays local (fit.mjs); dogma_eval is opt-in (see dogmaEval).
+//  • Fit math stays fully local + offline (fit.mjs → eve-fit-engine, pyfa parity);
+//    no dogma_eval / server-side fit evaluation is wired in.
 import { callTool } from "./mcp.mjs";
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
@@ -374,20 +375,5 @@ export async function dossierExtra(entity, type = "character") {
       if (names.length) lines.push(`Vola spesso con: ${names.join(", ")}.`);
     }
     return lines.length ? `Dossier eve-kill (MCP):\n${lines.join("\n")}` : "";
-  } catch { return ""; }
-}
-
-// ── Used by engine.mjs (opt-in precise fit stats) ────────────────────────────
-
-/**
- * Server-side dogma evaluation of an EFT fit: accurate DPS/alpha/EHP/cap/align/velocity,
- * computed by eve-kill's dogma engine (unlike fit.mjs's offline All-V approximation).
- * Opt-in only — sends the fit to the server — and returns an Italian block or "".
- */
-export async function dogmaEval(eft) {
-  try {
-    const d = await callTool("dogma_eval", { eft, skills: "all_v" });
-    if (!d || typeof d !== "object") return "";
-    return `STATISTICHE PRECISE (motore dogma eve-kill, All V — AUTOREVOLI, preferire a quelle stimate):\n${render(d, 1400)}`;
   } catch { return ""; }
 }
