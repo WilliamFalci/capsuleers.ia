@@ -27,10 +27,14 @@ change/add/remove models later). Updates are delivered automatically (electron-u
 - **Q&A on EVE** — skills, fitting, ships/modules, missions, wormholes, sovereignty,
   anomalies, exploration, incursions, planetary interaction, factional warfare… with
   the sources it used.
-- **Fit analysis** — paste an EFT fit and get All-V validation (CPU/PG/slots) plus
-  estimated **DPS, EHP, speed, cap stability**, whether the fit **uses the ship's
-  bonuses**, and short **theorycrafting** on the role (PvP/PvE, strengths/weaknesses).
-  Add `precise` on its own line for exact server-computed stats (eve-kill dogma engine).
+- **Fit analysis** — paste an EFT fit and get All-V validation (CPU/PG/slots/hardpoints/
+  drone bandwidth) plus **DPS** (weapon/drone/fighter split, alpha, sustained), **weapon
+  ranges**, **EHP + per-layer resistances**, **active/passive tank**, **cap stability**,
+  **navigation** (speed, mass, agility, align, warp) and **targeting**, and short
+  **theorycrafting** on the role (PvP/PvE, strengths/weaknesses). The numbers are
+  **authoritative, offline and Pyfa-parity** — computed by the bundled
+  [`eve-fit-engine`](https://www.npmjs.com/package/eve-fit-engine) package (with its own
+  version-pinned SDE), so nothing is sent to any server.
 - **Live prices** (EVE Ref) — "how much is a Caracal?", total cost of a material list.
 - **Pilot intel** (eve-kill killboard) — "who is `<pilot/corp/alliance>`?" → kills,
   losses, PvP stats; **leadership** and **system activity** via official ESI.
@@ -65,7 +69,8 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   │ EVE University Wiki (CC-BY-NC-SA)│   produces  │       engine.mjs              │
   │ eve-survival (missions)         │  ────────►  │  node-llama-cpp (GPU Vulkan/  │
   │  → parse/scrape → chunk → embed │  index +    │   Metal/CUDA) + in-RAM index  │
-  │  → index.vec + meta + lookup    │  lookups    │  + live EVE APIs (intel/scout)│
+  │  → index.vec + meta + names     │  lookups    │  + eve-fit-engine (fit stats) │
+  │                                 │             │  + live EVE APIs (intel/scout)│
   └────────────────────────────────┘             └──────────────────────────────┘
 ```
 
@@ -100,7 +105,7 @@ Developer guides: [`desktop/README.md`](desktop/README.md), release process in
 ## Structure
 
 - [`desktop/`](desktop/) — the standalone app (Electron + GPU RAG engine + live-data features).
-- [`ingestion/`](ingestion/) — Python data factory (SDE, wiki, missions, lookup, auto-update).
+- [`ingestion/`](ingestion/) — Python data factory (SDE, wiki, missions, names index, auto-update).
 - [`docs/`](docs/) — architecture notes and data sources.
 
 ## License

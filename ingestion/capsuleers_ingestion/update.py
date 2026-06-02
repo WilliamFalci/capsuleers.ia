@@ -25,7 +25,6 @@ from .config import CONFIG, DATA_DIR
 from .embedcache import EmbedCache
 from .sde import parse_all
 from .sde.download import download_sde_jsonl, latest_build
-from .sde.fitlookup import export_fit_lookup
 
 VERSION_FILE = DATA_DIR / "sde_version.json"
 
@@ -69,18 +68,15 @@ def run_update(force: bool = False) -> None:
                          collection=new_collection, cache=cache)
     cache.close()
 
-    # 3. Update the fit lookup (used by the API).
-    ships, mods = export_fit_lookup(sde_dir, DATA_DIR / "fit_lookup.json")
-
-    # 4. Atomic alias swap → new version active, old ones removed.
+    # 3. Atomic alias swap → new version active, old ones removed.
+    #    (Fit math no longer ships a fit_lookup.json — the desktop app's fitting
+    #    engine bundles its own version-pinned SDE via the eve-fit-engine package.)
     swap_alias(client, CONFIG.collection, new_collection)
 
     save_state({
         "build": remote,
         "collection": new_collection,
         "chunks": total,
-        "fit_ships": ships,
-        "fit_modules": mods,
         "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
     })
     print(f"Fatto: {total} chunk indicizzati, alias '{CONFIG.collection}' → {new_collection}.")

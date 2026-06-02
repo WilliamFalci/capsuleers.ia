@@ -16,7 +16,6 @@ checks **every day** whether the SDE has changed and, if so, rebuilds the index
 3. **Atomic swap** — the Qdrant alias `eve_knowledge` (queried by the API) is
    moved to the new collection; the old versions are deleted.
    The API doesn't notice anything (zero-downtime).
-4. `fit_lookup.json` is also regenerated for fit analysis.
 
 ## Manual commands
 

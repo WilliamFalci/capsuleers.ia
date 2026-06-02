@@ -342,8 +342,9 @@ function setupAutoUpdate() {
 }
 
 // Re-download index/data files whose size no longer matches the manifest (e.g. an
-// updated fit_lookup.json), so existing installs pick up new data without a reinstall.
+// updated names_index.json), so existing installs pick up new data without a reinstall.
 // Only the changed files are fetched; the big vector index is untouched if unchanged.
+// (Fitting SDE is no longer here — it's version-pinned inside the eve-fit-engine package.)
 async function refreshDataFiles() {
   if (!assetDirs || setupNeeded()) return;  // first-run setup downloads everything anyway
   const manifest = loadManifest();

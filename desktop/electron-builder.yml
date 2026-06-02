@@ -41,6 +41,9 @@ files:
 asarUnpack:
   - "**/node_modules/node-llama-cpp/**"
   - "**/node_modules/@node-llama-cpp/**"
+  # eve-fit-engine's /node loader reads its bundled SDE (manifest.json + v<hash>/*.json)
+  # from disk via fs — those reads fail inside app.asar, so unpack the data dir.
+  - "**/node_modules/eve-fit-engine/data/**"
 
 # Publishing to GitHub Releases (feeds electron-updater and the latest*.yml files).
 # Set owner/repo when the repo is online; for local builds use

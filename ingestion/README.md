@@ -26,7 +26,6 @@ python -m capsuleers_ingestion.run --reindex      # re-embed + re-index without 
 - `sde/download.py` — finds the current build (latest.jsonl) and downloads/extracts the official JSONL zip.
 - `sde/parse.py` + `universe/industry/dogma/social/facilities.py` — build the Documents
   for each domain (skills, ships, modules, attributes/dogma, requirements, bonuses, universe, etc.).
-- `sde/fitlookup.py` — exports `fit_lookup.json` for fit analysis/validation.
 - `update.py` — daily check (build number) and zero-downtime re-index (see `ops/`).
 - `wiki/scrape.py` — MediaWiki crawler for the EVE University Wiki (rate-limited, CC-BY-SA → preserves attribution).
 - `chunk.py` — chunking + metadata enrichment (`type`, `category`, `group`, `source`, `url`).

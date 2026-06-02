@@ -56,8 +56,9 @@ pip install -e .
 # (a) Download the official Fenris Creations SDE and generate the chunks (no infra needed)
 python -m capsuleers_ingestion.run --sde --dump data/docs_sde.jsonl
 
-# (b) Lookup table for fit analysis
-python -m capsuleers_ingestion.run --fit-lookup data/fit_lookup.json
+# (b) Name→typeID index (used by the app for price lookups; fit stats need no
+#     export — the desktop app bundles its own SDE via the eve-fit-engine package)
+python -m capsuleers_ingestion.run --names-index data/names_index.json
 
 # (c) EVE University Wiki — ~40 min. IMPORTANT for missions, anomalies,
 #     wormholes, exploration, incursions: the discursive explanations of these

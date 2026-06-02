@@ -10,7 +10,6 @@
     "files": [
       { "name": "index.vec",        "size": 289370112, "sha256": "cffa84f02ab03c908c0365cf72faa6f92e3b7a9b2ed7bf14c869c53265bf9391" },
       { "name": "index.meta.jsonl", "size": 39515310,  "sha256": "b86c35df32cb1bbfb7501ce1feddc8b409029751e38e5828259cc130697f4cf8" },
-      { "name": "fit_lookup.json",  "size": 1613824,   "sha256": "e03de8e0ee991cf7c8e057f528202e7be0b54aa076da0e37816009ab8290b88c" },
       { "name": "names_index.json", "size": 1115152,   "sha256": "6cc8936138586472fc6fa8204f03675660f31c647d113cb3636a923b3312e47c" }
     ]
   },

@@ -4,12 +4,12 @@ import { getLlama, LlamaChatSession, readGgufFileInfo, GgufInsights } from "node
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { looksLikeFit, parseEft, describeFit, configureDataDir as fitDataDir } from "./fit.mjs";
+import { looksLikeFit, parseEft, describeFit, warmFitEngine } from "./fit.mjs";
 import { priceByName, isKnownType, configureDataDir as pricesDataDir } from "./prices.mjs";
 import { intelFor } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
-import { maybeMcp, dogmaEval } from "./mcp-intel.mjs";
+import { maybeMcp } from "./mcp-intel.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -34,9 +34,10 @@ export function configurePaths({ modelsDir, dataDir } = {}) {
   if (dataDir) DATA = dataDir;
   EMBED_MODEL = path.join(MODELS_DIR, "bge-m3-Q8_0.gguf");
   MODEL_CHOICE_FILE = path.join(MODELS_DIR, ".selected-model");
-  // Sibling modules read their own lookup files (fit_lookup/names_index) from the
-  // SAME data dir — point them there too, or the packaged app looks inside app.asar.
-  if (dataDir) { fitDataDir(dataDir); pricesDataDir(dataDir); linksDataDir(dataDir); }
+  // Sibling modules read their own lookup files (names_index, links) from the SAME
+  // data dir — point them there too, or the packaged app looks inside app.asar.
+  // (fit.mjs no longer needs this: its SDE is bundled in eve-fit-engine/node.)
+  if (dataDir) { pricesDataDir(dataDir); linksDataDir(dataDir); }
 }
 
 const DIM = 1024, TOP_K = 12, MAX_CONTEXT_CHARS = 6000;
@@ -570,6 +571,10 @@ export async function init(onStatus = () => {}) {
   const embedModel = await llama.loadModel({ modelPath: EMBED_MODEL, gpuLayers: 0 });
   embedCtx = await embedModel.createEmbeddingContext({ contextSize: 2048 });
 
+  // Pre-load the fitting engine's SDE bundle (~8 MB JSON) so the first pasted fit
+  // doesn't stall. Fire-and-forget: it loads lazily on first use if this hasn't run.
+  warmFitEngine();
+
   const initial = pickInitialModel();
   if (!initial) throw new Error("Nessun modello .gguf trovato in models/.");
   await loadChatModel(initial);
@@ -581,26 +586,19 @@ export async function init(onStatus = () => {}) {
 
 /** Answers the question; onToken(text) for streaming. Returns {answer, sources}. */
 export async function ask(question, onToken = () => {}, uiLang = null) {
-  // 1. Pasted EFT fit → analysis (All V: validation, DPS/EHP/speed/cap, bonus usage).
-  //    Offline by default. An optional keyword on its own line ("preciso"/"precise"/
-  //    "dogma"/"esatto"/"pyfa") opts into accurate server-side stats via the eve-kill
-  //    dogma engine — that DOES send the fit to the server, hence opt-in only.
-  const wantPrecise = /(?:^|\n)\s*(?:precis\w*|esatt\w*|accurat\w*|dogma|pyfa)\s*(?=\n|$)/i.test(question);
-  const eftText = wantPrecise
-    ? question.split("\n").filter((l) => !/^\s*(?:precis\w*|esatt\w*|accurat\w*|dogma|pyfa)\s*$/i.test(l)).join("\n")
-    : question;
+  // 1. Pasted EFT fit → analysis (validation + DPS/EHP/tank/cap/navigation/targeting).
+  //    Fully offline + authoritative: the stats come from the Pyfa-parity eve-fit-engine
+  //    package (bundled SDE), so nothing is sent to any server.
+  const eftText = question;
   const isFit = looksLikeFit(eftText);
   let fitInfo = "", fitShip = null;
   if (isFit) {
     const fit = parseEft(eftText);
     if (fit) {
       fitShip = fit.ship;
-      fitInfo = await describeFit(fit);
+      fitInfo = await describeFit(fit, eftText);
       const cost = await fitCost(fit);
       if (cost) fitInfo += "\n" + cost;
-      // Opt-in: precise dogma stats from eve-kill (authoritative; placed after the
-      // local estimate so the directive tells the model to prefer them).
-      if (wantPrecise) { const precise = await dogmaEval(eftText); if (precise) fitInfo += "\n" + precise; }
     }
   }
 

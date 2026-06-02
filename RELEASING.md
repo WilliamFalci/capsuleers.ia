@@ -34,9 +34,11 @@ catalog model (`repo`/`file` exist on HuggingFace).
 
 1. Regenerate the index (`desktop/ build-index.mjs` / `export_index.py`).
 2. Update `index.version` and the `sha256`/`size` values in `assets-manifest.json` (you can
-   recompute them with `sha256sum data/index.* data/*_index.json data/fit_lookup.json`).
+   recompute them with `sha256sum data/index.* data/*_index.json`).
 3. Create a GitHub release with tag `index-<version>` (e.g. `index-2026.05.30`) and upload
-   `index.vec`, `index.meta.jsonl`, `fit_lookup.json`, `names_index.json` as assets.
+   `index.vec`, `index.meta.jsonl`, `names_index.json` as assets.
+   (Fit stats no longer ship a `fit_lookup.json` — the desktop app's fitting math is the
+   version-pinned SDE bundled inside the `eve-fit-engine` npm package.)
 
 > The index also derives from the EVE University Wiki (CC BY-NC-SA 4.0) → **non-commercial**
 > distribution (see [`THIRD_PARTY.md`](THIRD_PARTY.md)).

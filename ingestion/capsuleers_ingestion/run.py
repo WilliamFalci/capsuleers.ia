@@ -49,8 +49,6 @@ def main() -> None:
                     help="scrivi i chunk su JSONL invece di indicizzare (no infra)")
     ap.add_argument("--from-dump", metavar="FILE",
                     help="indicizza i chunk da un JSONL già prodotto")
-    ap.add_argument("--fit-lookup", metavar="FILE",
-                    help="esporta la tabella di lookup per i fit (per l'API) ed esci")
     ap.add_argument("--names-index", metavar="FILE",
                     help="esporta {nome→typeID} dei type pubblicati (per i prezzi nell'API) ed esci")
     args = ap.parse_args()
@@ -69,17 +67,6 @@ def main() -> None:
         from pathlib import Path as _P
         _P(args.names_index).write_text(_json.dumps(idx, ensure_ascii=False), encoding="utf-8")
         print(f"Indice nomi esportato in {args.names_index}: {len(idx)} type.")
-        return
-
-    # Fit lookup export (used by the API to validate pasted fits).
-    if args.fit_lookup:
-        from .sde.fitlookup import export_fit_lookup
-        sde_dir = args.sde_dir
-        if not sde_dir:
-            from .sde.download import download_sde_jsonl
-            sde_dir = download_sde_jsonl()
-        ships, mods = export_fit_lookup(sde_dir, args.fit_lookup)
-        print(f"Lookup fit esportato in {args.fit_lookup}: {ships} navi, {mods} moduli.")
         return
 
     # Index-from-dump mode (requires Qdrant/Ollama).

@@ -1,42 +1,60 @@
-// Parsing, validation and stat estimation of EFT fits (standalone).
-// CPU/PG/slot validation (All V) + estimates of DPS, EHP, speed and cap stability,
-// plus a check of whether the fit uses the ship's bonuses. Requires data/fit_lookup.json.
-// The numbers are All-V ESTIMATES (no overheat, simplified support skills, uniform
-// damage profile): close to pyfa, not identical.
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+// Parsing + analysis of EFT fits.
+//
+// The stat math (DPS/EHP/cap/tank/navigation/targeting/fitting) is delegated to the
+// `eve-fit-engine` npm package, which is Pyfa-parity (validated by 631 assertions /
+// 23 fixtures) and ships its own version-pinned SDE bundle — so the numbers below are
+// AUTHORITATIVE, offline, and need no remote dogma call. This module only:
+//   • detects a pasted fit (looksLikeFit),
+//   • extracts ship + module NAMES verbatim (parseEft) for the price lookup and the
+//     module listing shown to the LLM (the engine's Fit carries only typeIDs),
+//   • renders the computed DerivedStats into the Italian context block (describeFit).
+import {
+  loadBundledDataset, buildAllVSkillProfile, computeFit,
+  parseEft as engineParseEft, defaultStateForModule,
+} from "eve-fit-engine/node";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-// Data dir: defaults next to the module (dev: desktop/data); in the packaged app
-// the data lives in userData, so engine.configurePaths() points us there.
-let DATA_DIR = path.resolve(HERE, "..", "data");
-export function configureDataDir(dir) { if (dir) { DATA_DIR = dir; lookupCache = null; } }
 const HEADER = /^\[(.+?),\s*(.+?)\]$/;
+const ATTR_DRONE_BANDWIDTH = 1271;   // ship: total drone bandwidth (Mbit/s)
+const ATTR_DRONE_BW_USED = 1272;     // drone: bandwidth it consumes in space
+const MAX_DRONES_IN_SPACE = 5;       // Drones skill at level V (sub-cap controllable count)
 
-// Fitting skill bonuses at level V (community standard).
-const ALL_V = { shipCpu: 1.25, shipPg: 1.25, weaponCpu: 0.75, weaponPg: 0.75, shieldPg: 0.75 };
-// Stacking-penalty factors for the n-th strongest module of the same kind.
-const STACK = [1, 0.8691, 0.5706, 0.2830, 0.1060, 0.0301, 0.0086, 0.0019];
-// Approximate All-V support-skill multipliers per weapon family (damage / rate-of-fire).
-const SKILL = {
-  turret: { dmg: 1.15, rof: 0.80 },   // ~Surgical Strike V, Rapid Firing V
-  missile: { dmg: 1.10, rof: 0.90 },  // ~Warhead Upgrades V, Missile Launcher Operation V
-  drone: 1.50,                        // ~Drone Interfacing V (+50% drone damage)
-};
-const DTYPES = ["em", "therm", "kin", "exp"];
+const attrVal = (type, id) => type?.attributes?.find((a) => a.id === id)?.v;
 
-let lookupCache = null;
-async function loadLookup() {
-  if (lookupCache) return lookupCache;
-  try { lookupCache = JSON.parse(await readFile(path.join(DATA_DIR, "fit_lookup.json"), "utf-8")); } catch { lookupCache = null; }
-  return lookupCache;
+// EFT lists the drone BAY; the engine's OFFENSE only counts drones with countActive>0.
+// Launch drones greedily in EFT order, capped by ship bandwidth + the All-V 5-drone
+// limit, so the headline DPS reflects the drones actually deployable (Pyfa's behaviour).
+// Returns the deployed-drone summary (the engine's state-based derived.drones counters
+// don't reflect countActive set directly, so we tally it here for display).
+function launchDrones(fit, dataset) {
+  let bw = attrVal(dataset.getType(fit.shipTypeID), ATTR_DRONE_BANDWIDTH) || 0;
+  let slots = MAX_DRONES_IN_SPACE;
+  let active = 0, bwUsed = 0;
+  for (const d of fit.drones) {
+    const used = attrVal(dataset.getType(d.typeID), ATTR_DRONE_BW_USED) || 0;
+    let n = 0;
+    while (n < d.countTotal && slots > 0 && (used === 0 || bw - used >= -1e-9)) {
+      bw -= used; slots -= 1; n += 1; active += 1; bwUsed += used;
+    }
+    d.countActive = n;
+  }
+  return { active, bwUsed };
+}
+
+let _allVProfile = null;
+
+/** Pre-loads the bundled SDE so the first pasted fit doesn't pay the ~8 MB JSON read.
+ *  Called once from engine.init(). Safe to ignore failures (lazy-loaded on demand). */
+export async function warmFitEngine() {
+  try { await loadBundledDataset(); } catch { /* loaded lazily on first fit */ }
 }
 
 export function looksLikeFit(text) {
   return HEADER.test((text.trim().split("\n")[0] || "").trim());
 }
 
+// Lightweight name parser: ship + module/charge names verbatim from the EFT text.
+// Used for the price lookup (priceByName) and the module listing in the context block.
+// The numeric stats come from eve-fit-engine, which re-parses the raw EFT itself.
 export function parseEft(text) {
   const lines = text.trim().split("\n");
   const h = (lines[0] || "").trim().match(HEADER);
@@ -54,255 +72,129 @@ export function parseEft(text) {
   return { ship: h[1].trim(), name: h[2].trim(), modules };
 }
 
-// ── Stat math ───────────────────────────────────────────────────────────────
+// ── Formatting helpers ────────────────────────────────────────────────────────
+const r0 = (n) => Math.round(n || 0);
+const r1 = (n) => Math.round((n || 0) * 10) / 10;
+const pct = (n) => Math.round((n || 0) * 100);   // 0..1 resonance/fraction → percent
 
-const sumDmg = (d) => (d.em || 0) + (d.therm || 0) + (d.kin || 0) + (d.exp || 0);
-
-// Combine resonance multipliers (<1 = resist) with the stacking penalty.
-function stackResonance(mults) {
-  const fr = mults.map((m) => 1 - m).filter((f) => Math.abs(f) > 1e-9).sort((a, b) => b - a);
-  let res = 1;
-  fr.forEach((f, i) => { res *= (1 - f * (STACK[i] ?? 0)); });
-  return res;
-}
-// Combine percentage damage-mod bonuses (e.g. 20.5) with the stacking penalty.
-function stackBonus(pcts) {
-  const s = pcts.filter((p) => p > 0).sort((a, b) => b - a);
-  let mult = 1;
-  s.forEach((p, i) => { mult *= (1 + p / 100 * (STACK[i] ?? 0)); });
-  return mult;
-}
-
-// Ship damage multiplier for a weapon family / a specific drone group (per-level → ×5).
-// `family` (energy/hybrid/projectile/missile) matches each bonus to the actual fitted
-// weapon's family, so an "Energy Turret" bonus boosts lasers but not off-bonus weapons.
-function shipDamageMult(ship, { family, droneGroup } = {}) {
-  let mult = 1;
-  for (const b of ship.bonuses || []) {
-    if (!(b.pct && b.value && /damage/i.test(b.text))) continue;
-    const t = b.text.toLowerCase();
-    let applies = false;
-    if (droneGroup != null) {
-      if (!/drone/.test(t)) continue;
-      const isSentry = /sentry/.test(droneGroup.toLowerCase());
-      const mSentry = /sentry/.test(t), mLMH = /light drone|medium drone|heavy drone/.test(t);
-      applies = (!mSentry && !mLMH) || (mSentry && isSentry) || (mLMH && !isSentry);
-    } else if (family) {
-      const bf = bonusWeaponFamily(t);
-      // exact family, or a generic "turret" bonus (applies to any turret family).
-      applies = bf === family || (bf === "turret" && family !== "missile");
-    }
-    if (applies) mult *= (1 + (b.perLevel ? b.value * 5 : b.value) / 100);
-  }
-  return mult;
-}
-
-function computeEHP(ship, items) {
-  if (!ship.hp) return null;
-  const hp = { shield: ship.hp.shield || 0, armor: ship.hp.armor || 0, hull: ship.hp.hull || 0 };
-  for (const it of items) { const a = it.attrs || {}; hp.shield += a.shieldHpAdd || 0; hp.armor += a.armorHpAdd || 0; }
-  const out = { hp }; let total = 0;
-  for (const layer of ["shield", "armor", "hull"]) {
-    let resSum = 0;  // Σ resonance over the 4 damage types (uniform profile)
-    for (const dt of DTYPES) {
-      const base = ship.res?.[layer]?.[dt] ?? 1;
-      const mults = [];
-      for (const it of items) {
-        const a = it.attrs || {}, grp = it.group || "";
-        if (a[`${layer}Res_${dt}`] != null) mults.push(a[`${layer}Res_${dt}`]);
-        if (a[`${layer}ResBonus_${dt}`]) mults.push(1 + a[`${layer}ResBonus_${dt}`] / 100);
-        if (a[`resBonus_${dt}`]) {
-          const isShield = /shield/i.test(grp), isArmor = /armor|membrane|plate|energized/i.test(grp);
-          if ((layer === "shield" && isShield) || (layer === "armor" && isArmor)) mults.push(1 + a[`resBonus_${dt}`] / 100);
-        }
-      }
-      resSum += base * stackResonance(mults);
-    }
-    const ehp = hp[layer] / (resSum / 4);   // HP / average resonance
-    out[layer] = Math.round(ehp); total += ehp;
-  }
-  out.total = Math.round(total);
-  return out;
-}
-
-function computeCap(ship, items) {
-  const cap = ship.cap?.capacity, rr = ship.cap?.rechargeRate;
-  if (!cap || !rr) return null;
-  const peak = 2.5 * cap / (rr / 1000);   // peak recharge (GJ/s), at ~25% cap
-  let usage = 0;
-  for (const it of items) { const a = it.attrs || {}; if (a.capNeed && a.duration) usage += a.capNeed / (a.duration / 1000); }
-  const u = usage / peak;
-  if (u >= 1) return { stable: false, usage: +usage.toFixed(1), peak: +peak.toFixed(1) };
-  const s = (1 + Math.sqrt(1 - u)) / 2;    // stable cap fraction (higher root)
-  return { stable: true, pct: Math.round(s * s * 100), usage: +usage.toFixed(1), peak: +peak.toFixed(1) };
-}
-
-function computeSpeed(ship, items) {
-  const base = ship.mob?.maxVelocity, mass = ship.mob?.mass || 0;
-  if (!base) return null;
-  let bonus = 0;
-  for (const it of items) {
-    const a = it.attrs || {};
-    if (a.speedFactor && a.speedBoostFactor && mass) {
-      const m = mass + (/microwarp/i.test(it.group || "") ? (a.massAddition || 0) : 0);
-      bonus = Math.max(bonus, (a.speedFactor / 100) * a.speedBoostFactor / m);
-    }
-  }
-  return { base: Math.round(base), max: Math.round(base * (1 + bonus)) };
-}
-
-function computeDPS(ship, items, lk) {
-  const charges = lk.charges || {}, dronesDb = lk.drones || {};  // tolerate an older lookup
-  let turret = 0, missile = 0, drone = 0;
-  for (const it of items) {
-    if (it.kind !== "module") continue;
-    const a = it.attrs || {};
-    if (!a.rof || !it.charge) continue;
-    const ch = charges[it.charge]; if (!ch) continue;
-    const dmg = sumDmg(ch.dmg), n = it.qty || 1;
-    if (a.dmgMult) {  // turret: charge damage × turret multiplier
-      const sm = shipDamageMult(ship, { family: weaponFamily(it.group) || "turret" });
-      turret += dmg * a.dmgMult / (a.rof / 1000) * SKILL.turret.dmg / SKILL.turret.rof * sm * n;
-    } else {          // launcher: missile damage
-      const sm = shipDamageMult(ship, { family: "missile" });
-      missile += dmg / (a.rof / 1000) * SKILL.missile.dmg / SKILL.missile.rof * sm * n;
-    }
-  }
-  // Drones in space, limited by drone bandwidth; damage amplifiers stack-penalized.
-  const ddaMult = stackBonus(items.filter((i) => i.kind === "module").map((i) => i.attrs?.droneDmgBonus).filter(Boolean));
-  let bw = ship.droneBandwidth || 0;
-  for (const d of items.filter((i) => i.kind === "drone")) {
-    const info = dronesDb[d.name]; if (!info || !info.rof) continue;
-    for (let k = 0; k < (d.qty || 1) && bw - (info.bwUsed || 0) >= -1e-9; k++) {
-      bw -= info.bwUsed || 0;
-      const sm = shipDamageMult(ship, { droneGroup: info.group || "" });
-      drone += sumDmg(info.dmg) * (info.dmgMult || 1) / (info.rof / 1000) * SKILL.drone * ddaMult * sm;
-    }
-  }
-  const total = turret + missile + drone;
-  return total > 0 ? { total: Math.round(total), turret: Math.round(turret), missile: Math.round(missile), drone: Math.round(drone) } : null;
-}
-
-// Weapon family of a turret/launcher module, from its dogma group ("Energy Weapon",
-// "Hybrid Weapon", "Projectile Weapon", "Missile Launcher …"). Null = not a weapon.
-// NB: the group is the family marker — laser turrets are "Energy Weapon" (no "laser"
-// in the name), so matching on weapon NAMES instead of the group misses them.
-function weaponFamily(group) {
-  const g = (group || "").toLowerCase();
-  if (/energy weapon/.test(g)) return "energy";
-  if (/hybrid weapon/.test(g)) return "hybrid";
-  if (/projectile weapon/.test(g)) return "projectile";
-  if (/missile|launcher/.test(g)) return "missile";
-  return null;
-}
-// Weapon family a ship bonus refers to, from its text. A bonus that only says "turret"
-// (no specific family) applies to any turret. Null = not a weapon/drone bonus.
-function bonusWeaponFamily(t) {
-  if (/drone/.test(t)) return "drone";
-  if (/energy turret|laser|pulse|beam/.test(t)) return "energy";
-  if (/hybrid|railgun|blaster/.test(t)) return "hybrid";
-  if (/projectile|artillery|autocannon/.test(t)) return "projectile";
-  if (/missile|rocket|torpedo/.test(t)) return "missile";
-  if (/turret/.test(t)) return "turret";  // generic turret bonus → any turret family
-  return null;
-}
-
-// Does the fit use the ship's combat bonuses? Matches each weapon bonus to the FAMILY
-// of the fitted weapons (by dogma group), so e.g. a Paladin's "Large Energy Turret"
-// bonus is correctly recognized as used when Mega Pulse Lasers are fitted.
-// Returns lines [{text, used}].
-function bonusUsage(ship, items) {
-  const bonuses = (ship.bonuses || []).filter((b) => /damage|rate of fire|hitpoint|resist|repair|booster|tracking|optimal|missile|drone/i.test(b.text));
-  if (!bonuses.length) return null;
-  const hasDrones = items.some((i) => i.kind === "drone");
-  const families = new Set(items.filter((i) => i.kind === "module" && i.attrs?.rof).map((i) => weaponFamily(i.group)).filter(Boolean));
-  const anyTurret = families.has("energy") || families.has("hybrid") || families.has("projectile");
-  const out = [];
-  for (const b of bonuses) {
-    const fam = bonusWeaponFamily(b.text.toLowerCase());
-    let used = null;
-    if (fam === "drone") used = hasDrones;
-    else if (fam === "turret") used = anyTurret;       // generic turret bonus
-    else if (fam) used = families.has(fam);            // energy/hybrid/projectile/missile
-    if (used !== null) out.push({ text: b.text, used });
-  }
-  return out.length ? out : null;
-}
-
-/** Fit analysis: CPU/PG/slot validation (All V) + DPS/EHP/speed/cap estimates +
- *  ship-bonus usage. Returns a text block (used as context for the LLM answer). */
-export async function describeFit(fit) {
-  const lk = await loadLookup();
+/** Fit analysis: module listing (verbatim) + Pyfa-parity stats from eve-fit-engine,
+ *  rendered as the Italian context block fed to the LLM.
+ *  @param {{ship:string, modules:Array}} fit  parsed by parseEft (names for the listing)
+ *  @param {string} eftText  the raw EFT string (the engine re-parses + computes from it) */
+export async function describeFit(fit, eftText) {
   const lines = [`Nave: ${fit.ship}`, "Moduli:"];
-  const ship = lk?.ships?.[fit.ship];
-
-  // Classify each parsed entry (module vs drone) and enrich with lookup data.
-  const items = [];
-  let cpu = 0, pg = 0;
-  const slots = { high: 0, mid: 0, low: 0, rig: 0, subsystem: 0 };
-  const unknown = [];
   for (const m of fit.modules) {
-    const mod = lk?.modules?.[m.name];
-    const drn = lk?.drones?.[m.name];
-    if (mod) {
-      const cpuF = mod.fitSkill === "weapon" ? ALL_V.weaponCpu : 1;
-      const pgF = mod.fitSkill === "weapon" ? ALL_V.weaponPg : mod.fitSkill === "shield" ? ALL_V.shieldPg : 1;
-      cpu += (mod.cpu ?? 0) * cpuF; pg += (mod.pg ?? 0) * pgF; slots[mod.slot] += 1;
-      items.push({ ...m, kind: "module", group: mod.group, slot: mod.slot, attrs: mod.attrs || {} });
-      lines.push(`  - ${m.name} [${mod.slot}]${m.charge ? ` (carica: ${m.charge})` : ""}`);
-    } else if (drn) {
-      items.push({ ...m, kind: "drone", group: drn.group });
-      lines.push(`  - ${m.name} ×${m.qty} [drone]`);
-    } else {
-      unknown.push(m.name);
-      lines.push(`  - ${m.name}${m.qty > 1 ? ` ×${m.qty}` : ""}${m.charge ? ` (carica: ${m.charge})` : ""}`);
-    }
+    const qty = m.qty > 1 ? ` ×${m.qty}` : "";
+    const charge = m.charge ? ` (carica: ${m.charge})` : "";
+    lines.push(`  - ${m.name}${qty}${charge}`);
   }
 
-  if (ship) {
-    const sCpu = ship.cpuOutput != null ? ship.cpuOutput * ALL_V.shipCpu : null;
-    const sPg = ship.pgOutput != null ? ship.pgOutput * ALL_V.shipPg : null;
-    lines.push(`Fitting (skill a livello V): CPU ${cpu.toFixed(1)}/${sCpu?.toFixed(0) ?? "?"} tf, PG ${pg.toFixed(1)}/${sPg?.toFixed(0) ?? "?"} MW.`);
-    lines.push(`Slot usati: high ${slots.high}/${ship.high}, mid ${slots.mid}/${ship.mid}, low ${slots.low}/${ship.low}, rig ${slots.rig}/${ship.rig}.`);
-    const issues = [];
-    if (sCpu != null && cpu > sCpu) issues.push("CPU insufficiente");
-    if (sPg != null && pg > sPg) issues.push("PG insufficiente");
-    for (const k of ["high", "mid", "low", "rig"]) if (slots[k] > ship[k]) issues.push(`troppi moduli ${k}`);
-    lines.push(issues.length ? `Possibili problemi: ${issues.join(", ")}.` : "Il fit sta in piedi (CPU/PG/slot OK).");
-
-    // Estimated stats (All V). Collected first, printed only if any is available.
-    const statLines = [];
-    const dps = computeDPS(ship, items, lk);
-    if (dps) {
-      const parts = [];
-      if (dps.turret) parts.push(`turret ${dps.turret}`);
-      if (dps.missile) parts.push(`missili ${dps.missile}`);
-      if (dps.drone) parts.push(`droni ${dps.drone}`);
-      statLines.push(`- DPS: ~${dps.total}${parts.length > 1 ? ` (${parts.join(", ")})` : ""}.`);
+  let computed, warnings = [], droneInfo = { active: 0, bwUsed: 0 };
+  try {
+    const dataset = await loadBundledDataset();
+    const parsed = engineParseEft(eftText, dataset);
+    warnings = parsed.warnings || [];
+    const efit = parsed.fit;
+    // Promote modules to their natural state (weapons/props → ACTIVE), as the editor
+    // does on EFT import — otherwise weapons sit ONLINE and contribute 0 DPS.
+    for (const m of efit.modules) {
+      const ty = dataset.getType(m.typeID);
+      if (ty) m.state = defaultStateForModule(ty, dataset.effects);
     }
-    const ehp = computeEHP(ship, items);
-    if (ehp) statLines.push(`- Tank (EHP, profilo uniforme): ~${ehp.total} (scudo ${ehp.shield}, armatura ${ehp.armor}, scafo ${ehp.hull}).`);
-    const cap = computeCap(ship, items);
-    if (cap) statLines.push(cap.stable ? `- Cap: STABILE (~${cap.pct}% di capacitor).` : `- Cap: NON stabile (uso ${cap.usage} GJ/s > picco ricarica ${cap.peak} GJ/s).`);
-    const spd = computeSpeed(ship, items);
-    if (spd) statLines.push(`- Velocità: base ${spd.base} m/s${spd.max > spd.base ? `, max ~${spd.max} m/s col propulsore` : ""}.`);
-    if (statLines.length) { lines.push("STATISTICHE STIMATE (All V, ~pyfa):"); lines.push(...statLines); }
-
-    // Ship-bonus usage.
-    const usage = bonusUsage(ship, items);
-    if (usage) {
-      const unused = usage.filter((u) => !u.used);
-      if (unused.length && usage.some((u) => u.used)) {
-        lines.push(`- Bonus nave: il fit sfrutta alcuni bonus ma NON: ${unused.map((u) => u.text).join("; ")}.`);
-      } else if (unused.length === usage.length) {
-        lines.push(`- Bonus nave: il fit sembra NON sfruttare i bonus principali della nave (${unused.map((u) => u.text).join("; ")}).`);
-      } else {
-        lines.push("- Bonus nave: il fit sfrutta i bonus principali della nave.");
-      }
-    }
-  } else {
-    lines.push("(Nave non riconosciuta nel lookup: analisi limitata.)");
+    droneInfo = launchDrones(efit, dataset);
+    _allVProfile ??= buildAllVSkillProfile(dataset);
+    computed = computeFit(efit, dataset, { skillProfile: _allVProfile });
+  } catch {
+    lines.push("(Statistiche del fit non calcolabili.)");
+    return lines.join("\n");
   }
-  if (unknown.length) lines.push(`Moduli non riconosciuti: ${unknown.join(", ")}.`);
+  const d = computed.derived;
+  const isStructure = !!d.structure;
+  if (isStructure) lines.push("(Fit di struttura Upwell: navigazione/align non applicabili.)");
+
+  // Fitting resources.
+  const f = d.fitting;
+  lines.push(`Fitting (skill a livello V): CPU ${r1(f.cpuUsed)}/${r0(f.cpuMax)} tf, PG ${r1(f.powerUsed)}/${r0(f.powerMax)} MW${f.calibrationMax ? `, calibrazione ${r0(f.calibrationUsed)}/${r0(f.calibrationMax)}` : ""}.`);
+  const s = f.slots || {};
+  const slot = (k) => `${s[k]?.used ?? 0}/${s[k]?.max ?? 0}`;
+  lines.push(`Slot usati: high ${slot("HI")}, mid ${slot("MED")}, low ${slot("LO")}, rig ${slot("RIG")}${s.SUBSYSTEM?.max ? `, subsystem ${slot("SUBSYSTEM")}` : ""}.`);
+  const hpt = f.hardpoints;
+  if (hpt.turret.max || hpt.launcher.max) {
+    lines.push(`Hardpoint: turret ${hpt.turret.used}/${hpt.turret.max}, launcher ${hpt.launcher.used}/${hpt.launcher.max}.`);
+  }
+  if (f.droneBandwidthMax || f.droneBayMax) {
+    lines.push(`Capacità droni: banda ${r0(droneInfo.bwUsed)}/${r0(f.droneBandwidthMax)} Mbit/s (in volo), stiva ${r0(f.droneBayUsed)}/${r0(f.droneBayMax)} m³.`);
+  }
+
+  // Resource overflow check.
+  const issues = [];
+  if (f.cpuUsed > f.cpuMax + 1e-6) issues.push("CPU insufficiente");
+  if (f.powerUsed > f.powerMax + 1e-6) issues.push("PG insufficiente");
+  if (f.calibrationUsed > f.calibrationMax + 1e-6) issues.push("calibrazione insufficiente");
+  for (const [k, label] of [["HI", "high"], ["MED", "mid"], ["LO", "low"], ["RIG", "rig"], ["SUBSYSTEM", "subsystem"]]) {
+    if (s[k] && s[k].used > s[k].max) issues.push(`troppi moduli ${label}`);
+  }
+  if (hpt.turret.used > hpt.turret.max) issues.push("hardpoint turret insufficienti");
+  if (hpt.launcher.used > hpt.launcher.max) issues.push("hardpoint launcher insufficienti");
+  lines.push(issues.length ? `Possibili problemi: ${issues.join(", ")}.` : "Il fit sta in piedi (CPU/PG/slot OK).");
+
+  // Computed stats (only emit a line when its source value is present / non-zero).
+  const statLines = [];
+  const o = d.offense;
+  if (o.totalDps > 0) {
+    const parts = [];
+    if (o.weaponDps > 0) parts.push(`armi ${r0(o.weaponDps)}`);
+    if (o.droneDps > 0) parts.push(`droni ${r0(o.droneDps)}`);
+    if (o.fighterDps > 0) parts.push(`fighter ${r0(o.fighterDps)}`);
+    let dps = `- DPS: ~${r0(o.totalDps)}${parts.length > 1 ? ` (${parts.join(", ")})` : ""}`;
+    if (o.totalSustainedDps > 0 && Math.abs(o.totalSustainedDps - o.totalDps) > 1) dps += `; sostenuto ~${r0(o.totalSustainedDps)}`;
+    if (o.alphaStrike > 0) dps += `; alpha ${r0(o.alphaStrike)}`;
+    statLines.push(dps + ".");
+    const rng = [];
+    if (o.weaponOptimal > 0) rng.push(`ottimale ${r0(o.weaponOptimal)} m`);
+    if (o.weaponFalloff > 0) rng.push(`falloff ${r0(o.weaponFalloff)} m`);
+    if (o.weaponTracking != null) rng.push(`tracking ${o.weaponTracking.toFixed(4)}`);
+    if (o.explosionVelocity != null) rng.push(`expl.vel ${r0(o.explosionVelocity)} m/s`);
+    if (o.explosionRadius != null) rng.push(`expl.radius ${r0(o.explosionRadius)} m`);
+    if (rng.length) statLines.push(`- Portata armi: ${rng.join(", ")}.`);
+  }
+
+  const df = d.defense;
+  const ehpTotal = r0(df.shield.ehpUniform + df.armor.ehpUniform + df.hull.ehpUniform);
+  statLines.push(`- Tank (EHP, profilo uniforme): ~${ehpTotal} (scudo ${r0(df.shield.ehpUniform)}, armatura ${r0(df.armor.ehpUniform)}, scafo ${r0(df.hull.ehpUniform)}).`);
+  const resLine = (layer, label) => {
+    const r = layer.resistances;
+    return `  Resistenze ${label}: EM ${pct(r.em)}%, Th ${pct(r.thermal)}%, Kin ${pct(r.kinetic)}%, Exp ${pct(r.explosive)}%.`;
+  };
+  statLines.push(resLine(df.shield, "scudo"), resLine(df.armor, "armatura"), resLine(df.hull, "scafo"));
+
+  const t = d.tank;
+  const rep = [];
+  if (t.shieldRepairPerSecond > 0) rep.push(`scudo ${r0(t.shieldRepairPerSecond)}/s (sost. ${r0(t.shieldRepairPerSecondSustained)}/s)`);
+  if (t.armorRepairPerSecond > 0) rep.push(`armatura ${r0(t.armorRepairPerSecond)}/s (sost. ${r0(t.armorRepairPerSecondSustained)}/s)`);
+  if (t.hullRepairPerSecond > 0) rep.push(`scafo ${r0(t.hullRepairPerSecond)}/s`);
+  if (rep.length) statLines.push(`- Riparazione attiva: ${rep.join(", ")}.`);
+  if (t.passiveShieldRegenPeak > 0) statLines.push(`- Rigen passivo scudo (picco): ~${r0(t.passiveShieldRegenPeak)}/s.`);
+
+  const c = d.capacitor;
+  if (c.capacity > 0) {
+    statLines.push(c.stable
+      ? `- Cap: STABILE (~${pct(c.stablePercent)}%).`
+      : `- Cap: NON stabile (dura ~${r0(c.secondsToEmpty)} s; uso ${r1(c.usagePerSecond)} GJ/s > picco ricarica ${r1(c.peakRechargeRate)} GJ/s).`);
+  }
+
+  if (!isStructure) {
+    const n = d.navigation;
+    statLines.push(`- Velocità: ${r0(n.maxVelocity)} m/s; massa ${r0(n.mass)} kg; agilità ${r1(n.agility)}; align ~${r1(n.alignTimeSeconds)} s; warp ${r1(n.warpSpeed)} AU/s.`);
+    const tg = d.targeting;
+    statLines.push(`- Targeting: portata ${r1(tg.maxTargetingRange / 1000)} km, ${tg.maxLockedTargets} bersagli, signature ${r0(tg.signatureRadius)} m, scan res ${r0(tg.scanResolution)} mm, sensori ${tg.sensorType} ${r0(tg.sensorStrength)}.`);
+    if (droneInfo.active > 0) statLines.push(`- Droni in volo: ${droneInfo.active}, control range ${r1(d.drones.controlRange / 1000)} km.`);
+  }
+
+  lines.push("STATISTICHE (motore eve-fit-engine, All V, parità pyfa):");
+  lines.push(...statLines);
+
+  const unk = warnings.map((w) => w.text).filter(Boolean);
+  if (unk.length) lines.push(`Righe non riconosciute (escluse dal calcolo): ${unk.join(", ")}.`);
   return lines.join("\n");
 }
