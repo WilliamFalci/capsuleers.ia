@@ -169,12 +169,15 @@ function resolveCluster(needle, clusters) {
 }
 
 // Pulls the cluster's example killmail fit and computes its Pyfa-parity stats (with max/min
-// damage spread). Returns the Italian stats block, or null if it can't be fetched/computed.
+// damage spread). Returns { body, eft } — the Italian stats block + the raw EFT block so the
+// caller can surface the verbatim fit — or null if it can't be fetched/computed.
 async function doctrineFitStats(cluster) {
   if (!cluster?.killmail_id) return null;
   const ft = await callTool("killmail_fitting", { killmail_id: cluster.killmail_id, format: "eft" });
   const eft = extractEft(ft);
-  return eft ? await describeDoctrineFit(eft) : null;
+  if (!eft) return null;
+  const body = await describeDoctrineFit(eft);
+  return body ? { body, eft } : null;
 }
 
 // ── Dispatcher ───────────────────────────────────────────────────────────────
@@ -262,10 +265,11 @@ export async function maybeMcp(question, standalone = question) {
       if (m) {
         const target = resolveCluster(stripLead(clean(m[1])), lastDoctrine.clusters);
         if (target) {
-          const body = await doctrineFitStats(target);
-          if (body) {
+          const res = await doctrineFitStats(target);
+          if (res?.body) {
             const header = `specifiche dottrina ${target.name} di ${lastDoctrine.entity} (All V, parità pyfa, danno min/max per munizione)`;
-            return { ...blockBody(header, body, target), theory: true };
+            // theory → theorycrafting directive; eft → engine appends the verbatim fit block.
+            return { ...blockBody(header, res.body, target), theory: true, eft: res.eft };
           }
         }
       }

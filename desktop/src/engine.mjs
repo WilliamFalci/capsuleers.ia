@@ -758,8 +758,8 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
       it: `\nQuesto è un FIT. Struttura la risposta così, basandoti sull'ANALISI DEL FIT qui sopra (dati autorevoli, NON reinventarli). La CLASSE della nave è indicata nell'analisi: usala ESATTAMENTE, non dedurre né inventare la classe/ruolo dello scafo.\n1) **DPS**, **Tank (EHP)**, **Velocità**, **Cap stability** (riporta i numeri).\n2) **Bonus nave**: se il fit sfrutta o no i bonus della nave, e perché.\n3) **Theorycrafting**: a cosa serve questa nave con questo fit (ruolo, PvP/PvE, punti di forza e debolezze, come si usa). Usa la tua conoscenza della nave, coerente con la CLASSE indicata.`,
       en: `\nThis is a FIT. Structure the answer like this, based on the FIT ANALYSIS above (authoritative data, do NOT make it up). The ship's CLASS is given in the analysis: use it EXACTLY, do NOT infer or invent the hull's class/role.\n1) **DPS**, **Tank (EHP)**, **Speed**, **Cap stability** (report the numbers).\n2) **Ship bonuses**: whether the fit uses the ship's bonuses, and why.\n3) **Theorycrafting**: what this ship is for with this fit (role, PvP/PvE, strengths and weaknesses, how to fly it). Use your knowledge of the ship, consistent with the CLASS given.` },
     { on: !!mcp.theory,
-      it: `\nIl CONTESTO contiene le STATISTICHE di un fit di dottrina (eve-fit-engine, parità pyfa). Basati SOLO su quei numeri (NON reinventarli). Struttura la risposta così:\n1) **Danno**: riporta DPS e gittata sia con la carica ad alto danno sia con quella a lunga gittata (il «massimo e minimo»).\n2) **Tank (EHP)**, **Velocità**, **Cap** (riporta i numeri).\n3) **Theorycrafting**: ruolo tattico nella dottrina, range/velocità d'ingaggio ideale, punti di forza e debolezze, come si combatte. Ricorda che la rilevazione si basa sulle PERDITE degli ultimi 30 giorni.`,
-      en: `\nThe CONTEXT contains the STATS of a doctrine fit (eve-fit-engine, pyfa parity). Rely ONLY on those numbers (do NOT invent them). Structure the answer like this:\n1) **Damage**: report DPS and range for both the high-damage and the long-range ammo (the "max and min").\n2) **Tank (EHP)**, **Speed**, **Cap** (report the numbers).\n3) **Theorycrafting**: tactical role in the doctrine, ideal engagement range/speed, strengths and weaknesses, how to fight it. Note the detection is based on the last 30 days of LOSSES.` },
+      it: `\nIl CONTESTO contiene le STATISTICHE di un fit di dottrina (eve-fit-engine, parità pyfa). Basati SOLO su quei numeri (NON reinventarli). Struttura la risposta così:\n1) **Danno**: riporta DPS e gittata sia con la carica ad alto danno sia con quella a lunga gittata (il «massimo e minimo»).\n2) **Tank (EHP)**, **Velocità**, **Cap** (riporta i numeri).\n3) **Theorycrafting**: ruolo tattico nella dottrina, range/velocità d'ingaggio ideale, punti di forza e debolezze, come si combatte. Ricorda che la rilevazione si basa sulle PERDITE degli ultimi 30 giorni.\nNON riscrivere il fitting in formato EFT: il blocco EFT completo viene allegato automaticamente in fondo alla risposta.`,
+      en: `\nThe CONTEXT contains the STATS of a doctrine fit (eve-fit-engine, pyfa parity). Rely ONLY on those numbers (do NOT invent them). Structure the answer like this:\n1) **Damage**: report DPS and range for both the high-damage and the long-range ammo (the "max and min").\n2) **Tank (EHP)**, **Speed**, **Cap** (report the numbers).\n3) **Theorycrafting**: tactical role in the doctrine, ideal engagement range/speed, strengths and weaknesses, how to fight it. Note the detection is based on the last 30 days of LOSSES.\nDo NOT rewrite the fit in EFT format: the full EFT block is appended automatically at the end of the answer.` },
   ];
   const directiveText = directives.filter((d) => d.on).map((d) => (qLang === "it" ? d.it : d.en)).join("");
   const userMsg = `${histText}CONTESTO:\n`
@@ -776,6 +776,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   activeAbort = new AbortController();
   const session = new LlamaChatSession({ contextSequence: ctx.getSequence(), systemPrompt: isFit ? SYSTEM_FIT : SYSTEM });
   let answer = "";
+  let aborted = false;
   try {
     // High cap so answers finish at EOS instead of being cut mid-sentence; the
     // 4096 context leaves room for prompt + a long answer. (No real Q&A answer
@@ -787,17 +788,29 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     });
   } catch (e) {
     // Cancellation is expected (close/new question): we keep the partial answer.
-    if (!activeAbort.signal.aborted) throw e;
+    if (activeAbort.signal.aborted) aborted = true; else throw e;
   } finally {
     try { await ctx.dispose(); } catch { /* already tearing down */ }
     activeCtx = null;
     activeAbort = null;
   }
 
-  // 6. History (plain text for follow-ups) + linkification for the UI.
-  history.push({ q: question, a: answer, vec: vector });  // vec → next turn's relevance check
+  // 5b. Doctrine-fit specs carry the verbatim example EFT (straight from the killmail).
+  //     Append it as a copy/paste-able code block AFTER generation: deterministic (not the
+  //     small model, which could corrupt module names) and kept OUT of linkify so the fence
+  //     stays pristine. Streamed live, stored in history, appended to the linked answer below.
+  let eftBlock = "";
+  if (mcp.eft && !aborted) {
+    const label = qLang === "it" ? "Fit EFT (dal killmail d'esempio)" : "EFT fit (from the example killmail)";
+    eftBlock = `\n\n**${label}:**\n\`\`\`\n${String(mcp.eft).trim()}\n\`\`\`\n`;
+    onToken(eftBlock);
+  }
+
+  // 6. History (plain text for follow-ups) + linkification for the UI. The EFT block is
+  //    stored in history and appended to the linked answer verbatim (never linkified).
+  history.push({ q: question, a: answer + eftBlock, vec: vector });  // vec → next turn's relevance check
   if (history.length > 6) history.shift();
-  const linked = await linkify(answer, { lang: qLang, entities: [...mcp.entities, ...intel.entities, ...esi.entities] });
+  const linked = await linkify(answer, { lang: qLang, entities: [...mcp.entities, ...intel.entities, ...esi.entities] }) + eftBlock;
 
   // 7. SOURCES: if the answer comes from a live API, report the actual API (not the
   //    RAG vector neighbors, which would be noise here). Otherwise the RAG documents
