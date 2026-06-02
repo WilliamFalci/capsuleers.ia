@@ -77,6 +77,15 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   forensics, entity overview/timeline/kills, ships-used, entity-top rankings, global/system pulse).
   Deliberately NOT wired: `me_*` (no pilot context), `item/ship/system_info` (answered offline),
   fitting (`dogma_eval`/`fit_compare`/`ship_compare`), `kills_with`≈`flies_with`, `compare`≈`war_report`.
+  - **Doctrine specs (two-turn flow).** A `doctrine_detect` answer ("which doctrines does corp/alliance
+    X use") caches its clusters in module-scope `lastDoctrine` (`{ entity, clusters[] }`). A follow-up
+    like *"specifiche della Muninn"* / *"specs #2"* / *"a quanto spara la Crusader"* resolves the
+    cluster (by ordinal or ship name via `resolveCluster`), pulls its example killmail's EFT
+    (`killmail_fitting` `format:"eft"`), and computes the fit stats locally via `describeDoctrineFit`
+    (max/min damage). The returned block carries `theory:true`, which triggers a theorycrafting
+    directive in [`engine.mjs`](desktop/src/engine.mjs). `resetConversation()` clears `lastDoctrine`
+    via the exported `resetDoctrineMemory()`. The specs intent (#5-bis) is gated on `lastDoctrine`
+    and must precede the doctrine-list intent (#5).
 - [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) — Local-chat intel from the clipboard.
 - [`links.mjs`](desktop/src/links.mjs) — `linkify` + `detectLang`.
 
@@ -118,11 +127,19 @@ What `fit.mjs` still owns:
   `DerivedStats` into the Italian context block (fitting resources, slots/hardpoints, DPS with
   weapon/drone/fighter split + alpha + sustained, weapon ranges, EHP + per-layer resistances,
   active/passive tank, cap stability, navigation, targeting).
+- `describeDoctrineFit(eft)` — doctrine-fit variant used by the **doctrine specs** flow (see the
+  MCP section). Same authoritative tank/cap/nav/targeting block, but contrasts the offense at the
+  **highest-damage** vs the **longest-range** ammo (the "max/min" damage spread the user asked for).
+  Killmail loss fits usually have no ammo, so `pickAmmoExtremes()` injects the two extreme charges:
+  exact charge-size match; turret long-range = lowest-damage ammo; **missile long-range = genuinely
+  longest flight range** (`maxVelocity × flightTime`, ranked on base attrs since the ship/skill/rig
+  multipliers preserve the ordering). Missile flight range is surfaced via the engine's
+  `offense.missileRange` (added in eve-fit-engine 0.1.4).
 - `warmFitEngine()` — called once from `engine.init()` to preload the ~8 MB bundled SDE so the
   first pasted fit doesn't stall. Fire-and-forget; loads lazily on demand if it didn't run.
 
 Imports from `eve-fit-engine/node`: `loadBundledDataset`, `buildAllVSkillProfile`, `computeFit`,
-`parseEft`, `defaultStateForModule`.
+`parseEft`, `defaultStateForModule`, `moduleAcceptsChargeType`, `isTurretWeapon`, `isMissileLauncher`.
 
 ### Fit traps
 
