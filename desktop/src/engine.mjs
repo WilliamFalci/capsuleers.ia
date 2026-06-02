@@ -10,6 +10,7 @@ import { intelFor, intelForCandidate } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
 import { maybeMcp, resetDoctrineMemory } from "./mcp-intel.mjs";
+import { maybeWorkbench, resetFitMemory } from "./eveworkbench.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -129,7 +130,7 @@ let forcedIntel = null;            // intel pre-resolved from a disambiguation c
 let activeAbort = null;
 let activeCtx = null;
 
-export function resetConversation() { history = []; convLang = null; pendingDisambiguation = null; forcedIntel = null; resetDoctrineMemory(); }
+export function resetConversation() { history = []; convLang = null; pendingDisambiguation = null; forcedIntel = null; resetDoctrineMemory(); resetFitMemory(); }
 
 /** File (.gguf) of the chat model currently loaded (null if none). */
 export function currentModel() { return currentModelFile; }
@@ -690,7 +691,10 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const totalCost = await maybeTotalCost(question);
   // eve-kill MCP analytics (dossier archetypes, route danger, war report, wingmates,
   // battles, meta, killmail story/forensics…). { text, entities, source, sourceTitle }.
-  const mcp = await maybeMcp(question, standalone);
+  let mcp = await maybeMcp(question, standalone);
+  // EVE Workbench community-fit search ("voglio un fit PvP per la Vagabond"). Runs only when no
+  // MCP intent fired; folds into `mcp` so the card/EFT/theory plumbing below is shared.
+  if (!mcp.text) { const wb = await maybeWorkbench(question); if (wb.text) mcp = wb; }
   // A matched MCP relational/analytic intent (e.g. "chi uccide X", "X vs Y") takes
   // precedence over the generic killboard intel for the same name → don't run both.
   const intel = mcp.text ? { text: "", entities: [], kills: [] } : await maybeIntel(question);  // { text, entities, kills }

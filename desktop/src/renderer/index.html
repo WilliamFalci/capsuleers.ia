@@ -303,6 +303,18 @@
     .bt-m:hover { color: var(--text); }
     .bt-m img { width: 24px; height: 24px; border-radius: 2px; background: #0a0b0d; flex: 0 0 auto; }
     .bt-m i { font-style: normal; font-family: ui-monospace, monospace; font-size: .66rem; color: var(--muted); }
+    /* EVE Workbench fit list. */
+    .fitrow { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto auto auto; align-items: center; gap: .55rem;
+              text-decoration: none; color: var(--text); background: #0a0b0d; border: 1px solid var(--line); border-radius: 2px; padding: .35rem .55rem; }
+    .fitrow:hover { border-color: var(--orange-dim); }
+    .fitrow img { width: 32px; height: 32px; border-radius: 2px; background: #0a0b0d; }
+    .fit-main { min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+    .fit-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fit-sub { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fit-tags { display: flex; gap: .25rem; flex-wrap: nowrap; overflow: hidden; }
+    .fittag { font-size: .6rem; text-transform: uppercase; letter-spacing: .02em; color: #c4c7c5; background: #16191f;
+              border: 1px solid var(--line); border-radius: 2px; padding: .05rem .3rem; white-space: nowrap; }
+    .fittag.alpha { color: #1a0d02; background: #eab308; border-color: #eab308; font-weight: 700; }
     .kill {
       display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
       grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
@@ -1294,6 +1306,30 @@
       return el;
     }
 
+    // EVE Workbench community fits: ship icon + fit name + ship/class/author + tags + cost.
+    function fitListEl(c) {
+      const C = L.cards;
+      const el = document.createElement("div"); el.className = "panel";
+      const h = document.createElement("div"); h.className = "rank-title";
+      h.textContent = `${C.fitsFor || "Fit"} · ${c.ship}${c.tag ? ` (${c.tag})` : ""}`;
+      el.appendChild(h);
+      const list = document.createElement("div"); list.className = "elist";
+      for (const f of c.items) {
+        const row = document.createElement("a"); row.className = "fitrow";
+        row.href = `https://eveworkbench.com/fit/${f.id}`; row.title = "eveworkbench.com";
+        const tags = (f.tags || []).map((t) => `<span class="fittag">${esc(t)}</span>`).join("");
+        row.innerHTML = `<img src="${entityImg("ship", f.shipId, 32)}" alt="" />`
+          + `<div class="fit-main"><span class="fit-name">${esc(f.name)}</span>`
+          + `<span class="fit-sub">${esc(f.shipName || "")}${f.shipClass ? ` · ${esc(f.shipClass)}` : ""}${f.author ? ` · ${esc(f.author)}` : ""}</span></div>`
+          + (f.alpha ? `<span class="fittag alpha" title="Alpha">α</span>` : "")
+          + (tags ? `<span class="fit-tags">${tags}</span>` : "")
+          + (f.cost != null ? `<span class="er-m">${fmtIsk(f.cost)}</span>` : "");
+        list.appendChild(row);
+      }
+      el.appendChild(list);
+      return el;
+    }
+
     function renderCards(cards) {
       const wrap = document.createElement("div");
       if (cards.kind === "battles") { wrap.className = "cardgrid"; for (const b of cards.items) wrap.appendChild(battleCardEl(b)); return wrap; }
@@ -1306,6 +1342,7 @@
       else if (cards.kind === "syslist") wrap.appendChild(sysListEl(cards));
       else if (cards.kind === "versus") wrap.appendChild(versusEl(cards));
       else if (cards.kind === "battlecard") wrap.appendChild(battleReportEl(cards));
+      else if (cards.kind === "fitlist") wrap.appendChild(fitListEl(cards));
       return wrap;
     }
 
@@ -1341,6 +1378,7 @@
         "- **Rotta sicura**: *\"rotta sicura da Jita ad Amarr\"* → pericolosità per ogni salto",
         "- **Meta & dottrine**: *\"qual è la meta del momento?\"*  ·  *\"dottrine di <corp>\"*",
         "- **Specifiche di una dottrina**: dopo *\"dottrine di <corp>\"*, chiedi *\"fitting della <nave>\"* / *\"specifiche della <nave>\"* / *\"specifiche #2\"* → DPS e gittata con munizione max/min, tank, cap, velocità, targeting **+ il fit completo in formato EFT**",
+        "- **Fit per necessità**: *\"voglio un fit PvP per la Vagabond\"*, *\"cercami un fit da ratting per il Drake\"* → lista di fit della community (EVE Workbench); poi *\"specifiche del #1\"* per DPS/tank/EFT calcolati",
         "- **Kill più costosi**: *\"kill più costosi\"*",
         "- **Storia & coalizioni**: *\"storia di <pilota/corp>\"*  ·  *\"coalizioni\"* / *\"chi è alleato con <alleanza>\"*",
         "- **Killmail**: incolla un link zKillboard/eve-kill, oppure *\"racconta il killmail <id>\"*, *\"analizza il killmail <id>\"* (analisi forense), *\"fit del killmail <id>\"*",
@@ -1376,6 +1414,7 @@
         "- **Safe route**: *\"safe route from Jita to Amarr\"* → per-hop danger",
         "- **Meta & doctrines**: *\"what's the meta right now?\"*  ·  *\"doctrines of <corp>\"*",
         "- **Doctrine specs**: after *\"doctrines of <corp>\"*, ask *\"fit of the <ship>\"* / *\"specs of the <ship>\"* / *\"specs #2\"* → DPS and range with the high-damage/long-range ammo, tank, cap, speed, targeting **+ the full fit in EFT format**",
+        "- **Fit by need**: *\"I want a PvP fit for the Vagabond\"*, *\"find me a ratting fit for the Drake\"* → community fit list (EVE Workbench); then *\"specs of #1\"* for computed DPS/tank/EFT",
         "- **Most expensive kills**: *\"most expensive kills\"*",
         "- **History & coalitions**: *\"history of <pilot/corp>\"*  ·  *\"coalitions\"* / *\"who is allied with <alliance>\"*",
         "- **Killmails**: paste a zKillboard/eve-kill link, or *\"tell the story of killmail <id>\"*, *\"analyze killmail <id>\"* (forensics), *\"fit of killmail <id>\"*",
@@ -1409,7 +1448,7 @@
         aboutCredit: 'Creato da <a href="https://capsuleers.app/it/character/789877270" target="_blank" rel="noopener">TremalJack</a> e dal supporto della community di EVE Online.',
         aboutDisc1: "<b>Strumento non ufficiale</b> creato da fan, non affiliato né approvato da Fenris Creations.",
         aboutDisc2: "EVE Online e il logo EVE sono marchi registrati di Fenris Creations. Tutti i diritti riservati. Tutti i nomi di prodotti, loghi e marchi citati appartengono ai rispettivi proprietari. Fenris Creations non è in alcun modo responsabile del contenuto o del funzionamento di questa applicazione, né può essere ritenuta responsabile per eventuali danni derivanti dal suo utilizzo.",
-        aboutDisc3: "Dati e servizi: EVE Static Data Export ed ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref (prezzi), eve-kill (killboard + analisi MCP) ed EVE-Scout (Thera/Turnur). Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.",
+        aboutDisc3: "Dati e servizi: EVE Static Data Export ed ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref (prezzi), eve-kill (killboard + analisi MCP), EVE Workbench (fit della community) ed EVE-Scout (Thera/Turnur). Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.",
         modelsTitle: "MODELLO <b>IA</b>",
         modelsHint: "Stima sulla VRAM <b>libera ora</b>: più layer entrano in GPU, più la risposta è veloce. Chiudere altre app che usano la GPU (browser, Steam…) libera VRAM e accelera i modelli più grandi. I tempi sono indicativi per una risposta tipica.<br>Il modello che scegli diventa il <b>predefinito</b> e verrà riusato a ogni riavvio dell'app.",
         localTitle: "INTEL <b>LOCAL</b>",
@@ -1441,7 +1480,7 @@
             killed_alliance: "Alleanze più uccise", dies_to_alliance: "Uccisa più spesso da (alleanze)", killed_corporation: "Corp più uccise", dies_to_corporation: "Uccisa più spesso da (corp)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Flotta", blob: "Blob" }, avgFleet: "Flotta media",
           list: { wingmates: "Compagni di volo", prey: "Prede preferite", hunters: "Cacciatori" }, huntingGrounds: "Sistemi di caccia",
-          iskShare: "Quota ISK", contested: "Sistemi contesi", battle: { won: "Vittorioso", lost: "Sconfitto" } },
+          iskShare: "Quota ISK", contested: "Sistemi contesi", battle: { won: "Vittorioso", lost: "Sconfitto" }, fitsFor: "Fit per" },
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1487,7 +1526,7 @@
         aboutCredit: 'Created by <a href="https://capsuleers.app/en/character/789877270" target="_blank" rel="noopener">TremalJack</a> with the support of the EVE Online community.',
         aboutDisc1: "<b>Unofficial tool</b> made by fans, not affiliated with nor endorsed by Fenris Creations.",
         aboutDisc2: "EVE Online and the EVE logo are registered trademarks of Fenris Creations. All rights reserved. All product names, logos and brands mentioned are property of their respective owners. Fenris Creations is in no way responsible for the content or operation of this application, nor can it be held liable for any damage arising from its use.",
-        aboutDisc3: "Data & services: EVE Static Data Export and ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (PvE missions), Anoikis (wormholes), EVE Ref (prices), eve-kill (killboard + MCP analytics) and EVE-Scout (Thera/Turnur). Answers are generated by a local AI and may contain errors: <b>always verify in-game</b>.",
+        aboutDisc3: "Data & services: EVE Static Data Export and ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (PvE missions), Anoikis (wormholes), EVE Ref (prices), eve-kill (killboard + MCP analytics), EVE Workbench (community fits) and EVE-Scout (Thera/Turnur). Answers are generated by a local AI and may contain errors: <b>always verify in-game</b>.",
         modelsTitle: "<b>AI</b> MODEL",
         modelsHint: "Estimate on the VRAM <b>free now</b>: the more layers fit in GPU, the faster the reply. Closing other apps that use the GPU (browser, Steam…) frees VRAM and speeds up bigger models. Times are indicative for a typical answer.<br>The model you choose becomes the <b>default</b> and is reused on every app restart.",
         localTitle: "<b>LOCAL</b> INTEL",
@@ -1519,7 +1558,7 @@
             killed_alliance: "Alliances killed most", dies_to_alliance: "Most killed by (alliances)", killed_corporation: "Corps killed most", dies_to_corporation: "Most killed by (corps)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Fleet", blob: "Blob" }, avgFleet: "Avg fleet",
           list: { wingmates: "Wingmates", prey: "Favourite prey", hunters: "Hunters" }, huntingGrounds: "Hunting grounds",
-          iskShare: "ISK share", contested: "Contested systems", battle: { won: "Winner", lost: "Defeated" } },
+          iskShare: "ISK share", contested: "Contested systems", battle: { won: "Winner", lost: "Defeated" }, fitsFor: "Fits for" },
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,

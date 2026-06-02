@@ -17,6 +17,7 @@
 // ships_used, on top of the original killmail/route/war/doctrine/intel-graph set.
 import { callTool } from "./mcp.mjs";
 import { describeDoctrineFit } from "./fit.mjs";
+import { resetFitMemory } from "./eveworkbench.mjs";
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -463,7 +464,7 @@ export async function maybeMcp(question, standalone = question) {
             clusters = lastDoctrine.clusters; label = lastDoctrine.entity;
           } else {
             const cl = clustersFromDetect(await callTool("doctrine_detect", { entity }));
-            if (cl.length) { clusters = cl; label = entity; lastDoctrine = { entity, clusters: cl }; }
+            if (cl.length) { clusters = cl; label = entity; lastDoctrine = { entity, clusters: cl }; resetFitMemory(); }
           }
           if (clusters) {
             const target = resolveCluster(ship, clusters);
@@ -499,6 +500,7 @@ export async function maybeMcp(question, standalone = question) {
           // Remember the clusters so the next turn can compute a specific fit's stats.
           const clusters = clustersFromDetect(d);
           lastDoctrine = clusters.length ? { entity, clusters } : null;
+          if (lastDoctrine) resetFitMemory();
           const body = fmtClusters(d, { withFit: true });
           const header = `dottrine/fit dominanti di ${entity} (ultimi 30 giorni)`;
           const hint = lastDoctrine ? "\n(Per le statistiche di un fit chiedi: «specifiche della <nave>», «fitting della <nave>» oppure «specifiche #2».)" : "";

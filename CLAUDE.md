@@ -72,6 +72,15 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
 - [`intel.mjs`](desktop/src/intel.mjs) — eve-kill killboard pilot/corp/alliance intel.
 - [`esi.mjs`](desktop/src/esi.mjs) — official ESI (corp summary, character affiliation, system activity).
 - [`eve-scout.mjs`](desktop/src/eve-scout.mjs) — Thera/Turnur wormhole connections.
+- [`eveworkbench.mjs`](desktop/src/eveworkbench.mjs) — EVE Workbench community-fit **search by need**
+  ("voglio un fit PvP per la Vagabond"). `maybeWorkbench()` is a stateful two-step intent (NOT MCP;
+  the engine runs it only when no MCP intent fired, folding the result into `mcp`): a SEARCH
+  (`POST /Fit/PostSearchFits`) returns a `fitlist` card + remembers the results in module-scope
+  `lastFitSearch`; a follow-up ("specifiche del #2") resolves a fit, pulls its full EFT via
+  `GET /Fit/GetById` (`detailToEft` rebuilds slots + drones), and computes Pyfa-parity stats with
+  `describeDoctrineFit` (`theory:true` + the EFT block). Headless (UA + origin only, no auth). A fit
+  search and a doctrine search cross-clear each other (`resetFitMemory`/`resetDoctrineMemory`) so the
+  "specs #N" follow-up always targets the most recent context.
 - [`mcp.mjs`](desktop/src/mcp.mjs) + [`mcp-intel.mjs`](desktop/src/mcp-intel.mjs) — eve-kill **MCP**
   analytics (dossier, flies-with/hunts/preys/hunted, safe routes, battles, meta/doctrines, killmail
   forensics, entity overview/timeline/kills, ships-used, entity-top rankings, global/system pulse).
