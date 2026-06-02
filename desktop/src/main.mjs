@@ -459,6 +459,7 @@ ipcMain.on("win:close", () => { app.isQuitting = true; app.quit(); });
 ipcMain.on("win:mini", () => enterMini());                     // shrink to always-on-top icon
 ipcMain.on("win:restore", () => exitMini());
 ipcMain.on("reset", () => resetConversation());                // new conversation
+ipcMain.handle("clipboard:write", (_e, text) => { clipboard.writeText(String(text ?? "")); return true; });
 
 // Local intel from clipboard: the renderer can drive the toggle and the scan,
 // and re-confirm the last detected Local.

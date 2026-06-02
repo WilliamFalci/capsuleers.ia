@@ -18,8 +18,14 @@
       --user-line: #ff7a18;
     }
     * { box-sizing: border-box; }
+    /* The app window is a fixed-size shell (frameless, 16:9): the document itself must
+       NEVER scroll — only the inner #chat area does. overflow:hidden on html+body kills
+       any startup scrollbar; min-height:0 lets the flex children shrink instead of
+       pushing the body past 100vh (the default flex min-height:auto would otherwise
+       force a document scrollbar). */
+    html, body { height: 100%; overflow: hidden; }
     body {
-      margin: 0; height: 100vh; display: flex; flex-direction: column;
+      margin: 0; height: 100vh; min-height: 0; display: flex; flex-direction: column;
       background: var(--bg);
       background-image:
         linear-gradient(rgba(255,122,24,.025) 1px, transparent 1px),
@@ -130,7 +136,7 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
     /* Chat */
-    #chat { flex: 1; overflow-y: auto; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
+    #chat { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
     #chat::-webkit-scrollbar { width: 10px; }
     #chat::-webkit-scrollbar-thumb { background: #2a2f38; border-radius: 0; }
     .msg { max-width: 82%; padding: .8rem 1rem; line-height: 1.5; white-space: pre-wrap;
@@ -160,6 +166,22 @@
     .bot .md li { margin: .15rem 0; }
     .bot .md code { font-family: ui-monospace, monospace; background: #0a0b0d;
                     border: 1px solid var(--line); padding: 0 .3rem; border-radius: 2px; color: #ffc28a; }
+    /* Fit block: a copy-able EFT fitting, rendered from a ``` fence as a blockquote. */
+    .bot .md blockquote.fit { position: relative; margin: .4rem 0 .7rem; padding: .7rem .9rem .8rem;
+                    background: #0a0b0d; border: 1px solid var(--line); border-left: 3px solid var(--orange);
+                    border-radius: 2px; }
+    .bot .md blockquote.fit pre { margin: 0; max-width: 100%; overflow-x: auto; white-space: pre;
+                    font-family: ui-monospace, monospace; font-size: .82rem; line-height: 1.45; color: #d7dade; }
+    .bot .md blockquote.fit pre::-webkit-scrollbar { height: 8px; }
+    .bot .md blockquote.fit pre::-webkit-scrollbar-thumb { background: #2a2f38; }
+    .fit-copy { position: absolute; top: .5rem; right: .5rem; -webkit-app-region: no-drag;
+                    display: inline-flex; align-items: center; gap: .3rem; cursor: pointer;
+                    background: #16191f; color: var(--muted); border: 1px solid var(--line);
+                    border-radius: 3px; padding: .2rem .45rem; font-size: .7rem; line-height: 1;
+                    font-family: ui-monospace, monospace; }
+    .fit-copy:hover { color: var(--orange); border-color: var(--orange-dim); }
+    .fit-copy.done { color: #6ee7a8; border-color: #2f6f4f; }
+    .fit-copy svg { flex: 0 0 auto; }
     .bot .md a { color: var(--orange); text-decoration: none; border-bottom: 1px dotted var(--orange-dim); }
     .bot .md a:hover { border-bottom-style: solid; }
 
@@ -813,11 +835,27 @@
       let html = "";
       const stack = [];      // nested lists: [{ type:'ul'|'ol', indent:number }]
       let liOpen = false;    // is the last <li> still open (so a child list nests inside it)?
+      let codeBuf = null;    // !== null while inside a ``` fenced block (e.g. an EFT fit)
       const closeLi = () => { if (liOpen) { html += "</li>"; liOpen = false; } };
       const popList = () => { closeLi(); html += `</${stack.pop().type}>`; if (stack.length) liOpen = true; };
       const closeAll = () => { while (stack.length) popList(); };
+      // A fenced block is rendered as a fit blockquote with a copy button (used for EFT fits).
+      const flushCode = () => {
+        const body = (codeBuf || []).join("\n");
+        html += `<blockquote class="fit"><button class="fit-copy" type="button" title="${L.fitCopy}">`
+          + `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">`
+          + `<rect x="9" y="9" width="11" height="11" rx="1"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>`
+          + `<span>${L.fitCopy}</span></button><pre>${body}</pre></blockquote>`;
+        codeBuf = null;
+      };
       for (const raw of lines) {
         const line = raw.replace(/\s+$/, "");
+        if (/^\s*```/.test(line)) {                 // fence open/close
+          if (codeBuf !== null) flushCode();
+          else { closeAll(); codeBuf = []; }
+          continue;
+        }
+        if (codeBuf !== null) { codeBuf.push(raw); continue; }  // verbatim (already esc'd)
         let m;
         if (m = line.match(/^\s*#{1,6}\s+(.*)/)) { closeAll(); html += `<h4>${inline(m[1])}</h4>`; }
         else if (m = line.match(/^(\s*)(?:[-*]|\d+\.)\s+(.*)/)) {
@@ -836,6 +874,7 @@
         else if (line.trim() === "") { closeAll(); }
         else { closeAll(); html += `<p>${inline(line)}</p>`; }
       }
+      if (codeBuf !== null) flushCode();   // unterminated fence (still streaming): render what we have
       closeAll();
       return html;
     }
@@ -999,6 +1038,7 @@
         fliesWith: "Vola spesso con", recentShips: "Ultime navi usate",
         openKillmail: "Apri il killmail su eve-kill.com",
         sources: "FONTI //",
+        fitCopy: "Copia", fitCopied: "Copiato!",
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1068,6 +1108,7 @@
         fliesWith: "Often flies with", recentShips: "Recently used ships",
         openKillmail: "Open the killmail on eve-kill.com",
         sources: "SOURCES //",
+        fitCopy: "Copy", fitCopied: "Copied!",
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,
@@ -1105,6 +1146,20 @@
       },
     };
     const L = I18N[SYS_LANG];
+
+    // Copy button on fit blockquotes (delegated: blocks are injected via innerHTML).
+    chat.addEventListener("click", (e) => {
+      const btn = e.target.closest(".fit-copy");
+      if (!btn) return;
+      const pre = btn.parentElement.querySelector("pre");
+      if (!pre) return;
+      window.capsuleers.clipboard.write(pre.textContent);
+      const span = btn.querySelector("span");
+      btn.classList.add("done");
+      if (span) span.textContent = L.fitCopied;
+      clearTimeout(btn._t);
+      btn._t = setTimeout(() => { btn.classList.remove("done"); if (span) span.textContent = L.fitCopy; }, 1400);
+    });
 
     // Applies the static strings to elements marked with data-i18n[-title|-html|-ph].
     function applyStaticI18n() {
