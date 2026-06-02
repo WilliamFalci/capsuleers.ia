@@ -114,6 +114,18 @@ export function fitIntent(question) {
   return { mode: FIT_REQUEST.test(question) ? "primary" : "supplementary", tag: needToTag(question) };
 }
 
+// Ship named explicitly at the end of the RAW question ("…per il Drake [pvp]" / "…for the Drake").
+// Used (validated against the type index) before the RAG ship doc, so an explicit request can't be
+// derailed by a polluted retrieval query. Strips the leading article + a trailing need word.
+export function shipFromQuery(question) {
+  const qq = (question || "").replace(/[\s?!.…]+$/u, "");   // tolerate a trailing "?"
+  const m = qq.match(/\b(?:per|for|della|dello|del|dell['’]|da|of)\s+([\w'’\-. ]{2,40})$/i);
+  if (!m) return null;
+  let s = clean(m[1]).replace(/^(?:una?|un['’]?|la|lo|il|le|gli|i|l['’]|the|a|an)\s+/i, "");
+  s = s.replace(/\s+(?:pvp|pve|ratting|mining|exploration|esplorazione|wormhole|incursion\w*|abyss\w*|cheap|economic\w*|t1|t2|meta)$/i, "").trim();
+  return s.length >= 2 ? s : null;
+}
+
 // Runs the search for an already-resolved ship (the engine takes it from the RAG ship doc, which
 // is reliable even when the ship is named mid-sentence). Returns a 'fitlist' card or null, and
 // remembers the results so "specifiche del #N" can drill in.
@@ -130,7 +142,7 @@ export async function runFitSearch(ship, tag) {
  *  a prior fit search (lastFitSearch). The SEARCH itself is driven by the engine (fitIntent +
  *  runFitSearch) because it needs the RAG-resolved ship. Returns a live block or EMPTY. */
 export async function maybeWorkbench(question) {
-  const q = question;
+  const q = (question || "").replace(/[\s?!.…]+$/u, "") || question;   // trailing "?" breaks $-captures
   try {
     if (lastFitSearch?.fits?.length) {
       const m = q.match(/\b(?:specifiche|statistiche|specs?|stats?|dettagli|caratteristiche|scheda|apri|mostra(?:mi)?|fit|fitting)\b[\s\S]*?([\w'’\-# ]{1,30})$/i);

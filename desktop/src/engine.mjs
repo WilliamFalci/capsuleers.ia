@@ -10,7 +10,7 @@ import { intelFor, intelForCandidate } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
 import { maybeMcp, resetDoctrineMemory } from "./mcp-intel.mjs";
-import { maybeWorkbench, fitIntent, runFitSearch, resetFitMemory } from "./eveworkbench.mjs";
+import { maybeWorkbench, fitIntent, shipFromQuery, runFitSearch, resetFitMemory } from "./eveworkbench.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -705,7 +705,12 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   if (!mcp.text) {
     const fi = fitIntent(question);
     if (fi) {
-      const ship = hits.find((h) => h.type === "ship")?.title;
+      // Prefer the ship named explicitly in the question ("…per il Drake") when it's a real type —
+      // immune to a condense-polluted retrieval query; else the RAG ship doc (handles a ship named
+      // mid-sentence in a knowledge question, e.g. "what's the Caracal bonus and how to fit it").
+      const explicit = shipFromQuery(question);
+      let ship = (explicit && await isKnownType(explicit).catch(() => false)) ? explicit : null;
+      if (!ship) ship = hits.find((h) => h.type === "ship")?.title || null;
       const card = ship ? await runFitSearch(ship, fi.tag) : null;
       if (card && fi.mode === "primary") {
         mcp = { text: `INTEL EVE Workbench (dati live) — fit per ${ship}${fi.tag ? ` (${fi.tag})` : ""}:\n`

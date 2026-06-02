@@ -375,7 +375,9 @@ const EMPTY = { text: "", entities: [], source: null, sourceTitle: null };
  * matches (cheap: just regex tests, no network). Never throws.
  */
 export async function maybeMcp(question, standalone = question) {
-  const q = question;
+  // Strip trailing punctuation (?, !, …) so $-anchored captures aren't broken — e.g.
+  // "qual è il fitting del muninn?" must still resolve the doctrine follow-up (#5-bis).
+  const q = (question || "").replace(/[\s?!.…]+$/u, "") || question;
   try {
     // 1) KILLMAIL by id / zKillboard|eve-kill URL → detail · story · forensics · fitting.
     {
