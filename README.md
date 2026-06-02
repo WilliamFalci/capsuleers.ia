@@ -52,8 +52,9 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   Jita", with the **entry and exit signatures** and jump distance.
 - **Model management** — pick/download/delete chat models from an **updatable catalog**,
   filtered to a sensible VRAM range, with a response-time estimate for your GPU.
-- **Self-updating knowledge base** — the RAG index tracks new EVE patches (SDE) and EVE
-  University wiki edits; when a newer index is published the app downloads it in the
+- **Self-updating knowledge base** — daily jobs track every source (EVE patches/SDE,
+  EVE University wiki edits, eve-survival missions, Anoikis wormhole data) and re-index
+  only what changed; when a newer index is published the app downloads it in the
   background and offers a restart — no reinstall, no app update.
 
 ## Stack
@@ -84,7 +85,8 @@ change/add/remove models later). Updates are delivered automatically (electron-u
 - **App** ([`desktop/`](desktop/)): Electron + `node-llama-cpp`. No server, no
   Qdrant/Ollama, no Python at runtime.
 - **Data factory** ([`ingestion/`](ingestion/)): a Python pipeline run **offline** (by
-  whoever builds the app) to generate the knowledge base and keep it up to date (SDE).
+  whoever builds the app) to generate the knowledge base and keep it up to date via daily
+  incremental jobs (SDE, EVE University wiki, eve-survival missions, Anoikis wormhole).
 
 ## Data sources
 
