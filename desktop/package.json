@@ -1,6 +1,6 @@
 {
   "name": "capsuleers-ia-desktop",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "description": "Capsuleers.IA — app desktop standalone (multipiattaforma, GPU via Vulkan/Metal/CUDA)",
   "type": "module",
   "main": "src/main.mjs",
@@ -14,7 +14,9 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:linux": "electron-builder --linux --publish never",
-    "dist:win": "electron-builder --win --publish never"
+    "dist:win": "electron-builder --win --publish never",
+    "dist:win:cuda": "electron-builder --win --config electron-builder.win-cuda.yml --publish never",
+    "dist:win:vulkan": "electron-builder --win --config electron-builder.win-vulkan.yml --publish never"
   },
   "dependencies": {
     "electron-updater": "^6.3.9",

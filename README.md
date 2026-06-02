@@ -13,8 +13,13 @@ computer, except optional lookups to public EVE APIs for the live-data features.
 
 Grab the installer for your OS from the [**Releases**](../../releases/latest):
 
-- **Windows** — `Capsuleers.IA-Setup-<version>.exe` (NSIS installer)
+- **Windows, NVIDIA GPU** — `Capsuleers.IA-Setup-NVIDIA_Cuda-<version>.exe` (CUDA backend)
+- **Windows, AMD/Intel GPU** — `Capsuleers.IA-Setup-AMD_Vulkan-<version>.exe` (Vulkan backend)
 - **Linux** — `Capsuleers.IA-<version>.AppImage`
+
+> Pick the Windows installer that matches your graphics card: the **NVIDIA_Cuda** build runs
+> NVIDIA cards on CUDA (fastest); the **AMD_Vulkan** build (lighter download) is for AMD/Intel
+> GPUs and uses Vulkan. Both fall back gracefully if the preferred backend isn't available.
 
 The installer is **lite** (code only). On first launch the app downloads, once, the
 embedding model + the EVE knowledge index and a chat model of your choice (you can
@@ -108,7 +113,7 @@ change/add/remove models later). Updates are delivered automatically (electron-u
 cd desktop
 npm install
 npm start            # dev (expects models/ and data/ present locally)
-npm run dist:linux   # or dist:win — build an installer
+npm run dist:linux   # AppImage. On Windows: dist:win:cuda / dist:win:vulkan
 ```
 
 **Want to contribute?** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) — step-by-step dev setup,

@@ -18,11 +18,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Two Windows variants: NVIDIA/CUDA and AMD/Vulkan. Each uses its own
+        # electron-builder config (different bundled @node-llama-cpp binaries,
+        # different installer name, different update channel). `npm ci` on the
+        # windows runner installs both win-x64-cuda(+ext) and win-x64-vulkan, so
+        # each config just picks what to bundle via its `files` list.
         include:
           - os: ubuntu-latest
-            platform: --linux
+            label: linux
+            args: --linux
           - os: windows-latest
-            platform: --win
+            label: windows-cuda
+            args: --win --config electron-builder.win-cuda.yml
+          - os: windows-latest
+            label: windows-vulkan
+            args: --win --config electron-builder.win-vulkan.yml
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -44,14 +54,15 @@ jobs:
       # come from electron-builder.yml (publish:). Avoid the -c.publish.* CLI
       # dot-notation: it breaks under PowerShell on the Windows runners.
       - name: Build & publish
-        run: npx --no-install electron-builder ${{ matrix.platform }} --publish always
+        run: npx --no-install electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Backup copy of the artifacts, also useful for workflow_dispatch.
+      # Backup copy of the artifacts, also useful for workflow_dispatch. The name must be
+      # unique per matrix entry (the two windows variants would otherwise collide).
       - uses: actions/upload-artifact@v4
         with:
-          name: capsuleers-ia-${{ matrix.os }}
+          name: capsuleers-ia-${{ matrix.label }}
           path: |
             desktop/dist/*.AppImage
             desktop/dist/*.exe

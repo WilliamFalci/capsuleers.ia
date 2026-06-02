@@ -32,8 +32,11 @@ files:
   - "!**/node_modules/node-llama-cpp/llama/localBuilds/**"
   # Foreign architectures (x64 build): drop the ARM binaries.
   - "!**/node_modules/@node-llama-cpp/*arm*/**"
-  # CUDA excluded from the "lite" build (~600 MB): Vulkan/Metal cover NVIDIA too.
-  # For a CUDA variant, remove this line and rebuild on that platform.
+  # CUDA excluded from this base/"lite" build (~600 MB): Vulkan/Metal cover NVIDIA too.
+  # This base drives the Linux AppImage and the AMD/Vulkan Windows variant
+  # (electron-builder.win-vulkan.yml, default `latest` channel). The dedicated NVIDIA/CUDA
+  # Windows variant is electron-builder.win-cuda.yml (re-declares `files` without this
+  # exclusion, publishes on the `latest-cuda` channel).
   - "!**/node_modules/@node-llama-cpp/*cuda*/**"
 
 # The node-llama-cpp native binaries CANNOT live inside the asar: they must be

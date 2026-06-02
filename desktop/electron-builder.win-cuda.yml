@@ -1,0 +1,48 @@
+# Windows variant: NVIDIA / CUDA (the "full" build, ~600 MB heavier).
+# Extends the base config but RE-DECLARES `files` to keep the @node-llama-cpp CUDA
+# binaries (win-x64-cuda + win-x64-cuda-ext, the latter carries the bundled CUDA runtime
+# so the user does NOT need the CUDA Toolkit installed). Vulkan is intentionally kept too,
+# as a graceful fallback: getLlama() auto-selects CUDA on NVIDIA and only drops to Vulkan
+# (instead of CPU) if CUDA fails to initialise (e.g. an old driver).
+#
+#   npm run dist:win:cuda
+#   electron-builder --win --config electron-builder.win-cuda.yml
+#
+# Backend preference at runtime: CUDA → Vulkan → CPU.
+extends: electron-builder.yml
+
+# `extends` deep-merges nested objects but REPLACES arrays — so `files` must be listed in
+# full. This is the base list MINUS the `*cuda*` exclusion (and WITHOUT excluding *vulkan*,
+# which stays in as the fallback). Only the foreign-arch binaries are dropped.
+files:
+  - "**/*"
+  - "!models/**"          # ~16 GB of .gguf → on-demand, never in the package
+  - "!data/**"            # RAG index → downloaded/versioned separately
+  - "!build/**"           # electron-builder picks up the build resources separately
+  - "!*.py"
+  - "!build-index.mjs"
+  - "!rag.mjs"
+  - "!**/*.md"
+  - "!**/.selected-model"
+  # Trimming node-llama-cpp: only the compiled binary is needed at runtime, not the C++
+  # source nor the test vocabs.
+  - "!**/node_modules/node-llama-cpp/llama/llama.cpp/**"
+  - "!**/node_modules/node-llama-cpp/llama/localBuilds/**"
+  # Foreign architectures (x64 build): drop the ARM binaries.
+  - "!**/node_modules/@node-llama-cpp/*arm*/**"
+  # NB: NO `*cuda*` exclusion here (that is what differentiates this variant), and Vulkan
+  # is kept in as the runtime fallback.
+
+nsis:
+  artifactName: ${productName}-Setup-NVIDIA_Cuda-${version}.${ext}
+
+# Dedicated update channel so this variant publishes/consumes `latest-cuda.yml` instead of
+# the default `latest.yml`. electron-builder writes this channel into the package's
+# app-update.yml, and electron-updater reads it automatically — no main.mjs change needed,
+# and no cross-variant updates (a CUDA install never pulls the Vulkan artifact).
+publish:
+  provider: github
+  owner: WilliamFalci
+  repo: capsuleers.ia
+  releaseType: release
+  channel: latest-cuda

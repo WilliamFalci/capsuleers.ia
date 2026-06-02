@@ -1,0 +1,19 @@
+# Windows variant: AMD / Vulkan (the "lite" build).
+# Extends the base config and inherits EVERYTHING (appId, productName, files,
+# asarUnpack, win target/icon, publish owner/repo). The base already excludes the
+# *cuda* binaries, so this package ships Vulkan (+ CPU fallback) only.
+#
+#   npm run dist:win:vulkan
+#   electron-builder --win --config electron-builder.win-vulkan.yml
+#
+# Update channel: DEFAULT (`latest`) — inherited from the base publish block. This is
+# deliberately the same channel today's shipped (lite/Vulkan) installs already poll, so
+# existing users keep auto-updating seamlessly and stay on the Vulkan stream. Only the
+# CUDA variant uses a dedicated channel (see electron-builder.win-cuda.yml).
+extends: electron-builder.yml
+
+# NOTE on `extends`: nested objects deep-merge with the base; ARRAYS are replaced, not
+# merged. We only override the installer file name here, so nsis.{oneClick,...} from the
+# base are preserved by the deep merge.
+nsis:
+  artifactName: ${productName}-Setup-AMD_Vulkan-${version}.${ext}

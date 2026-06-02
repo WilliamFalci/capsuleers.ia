@@ -100,7 +100,8 @@ Run from `desktop/` (`npm run <script>`):
 | `npm run export-index` | `python3 export_index.py` — export vectors from a populated Qdrant (fast path). |
 | `npm run validate-hf` | Check the embedding model + every catalog model still resolve on HuggingFace (`repo`/`file` exist, checksum). Run after editing [`models-catalog.json`](desktop/src/models-catalog.json). |
 | `npm run pack` | `electron-builder --dir` — unpacked build (no installer) for fast local packaging checks. |
-| `npm run dist:linux` / `npm run dist:win` | Build the AppImage / NSIS installer (`--publish never`). |
+| `npm run dist:linux` | Build the Linux AppImage (`--publish never`). |
+| `npm run dist:win:cuda` / `npm run dist:win:vulkan` | Build the NVIDIA/CUDA or AMD/Vulkan Windows NSIS installer (`--publish never`). Run **on Windows** — the `win-x64-*` native binaries don't install on Linux. `npm run dist:win` builds the base/Vulkan-lite variant. |
 | `npm run dist` | Build for the current platform. |
 
 ### Where the runtime logic lives ([`desktop/src/`](desktop/src/))
@@ -249,8 +250,12 @@ data gaps. **Add a row to [`dataset.jsonl`](eval/dataset.jsonl)** for every real
 App and index are released **separately** (see [`RELEASING.md`](RELEASING.md) for the full checklist):
 
 - **App** — push a `vX.Y.Z` tag. The [`release.yml`](.github/workflows/release.yml) workflow builds
-  natively per-OS (ubuntu → AppImage, windows → NSIS) and publishes to the GitHub Release.
-  `node-llama-cpp` has per-platform binaries, hence the native matrix.
+  natively per-OS (ubuntu → AppImage, windows → **two NSIS variants**: `NVIDIA_Cuda` on the
+  `latest-cuda` channel and `AMD_Vulkan` on the default `latest` channel) and publishes to the
+  GitHub Release. `node-llama-cpp` has per-platform/per-backend binaries, hence the native matrix;
+  the two Windows configs ([`win-cuda.yml`](desktop/electron-builder.win-cuda.yml) /
+  [`win-vulkan.yml`](desktop/electron-builder.win-vulkan.yml)) differ only in which binaries they
+  bundle, the installer name, and the update channel.
 - **Index** — when the knowledge base changes: regenerate, update `index.version` + the `sha256`/`size`
   in [`assets-manifest.json`](desktop/src/assets-manifest.json), and upload `index.vec` /
   `index.meta.jsonl` / `names_index.json` to an `index-<version>` release.
