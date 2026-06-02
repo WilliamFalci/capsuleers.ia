@@ -68,34 +68,39 @@ reported changes): the ~290 MB vector file isn't worth republishing per wiki edi
    ```bash
    git tag v0.1.0 && git push origin v0.1.0
    ```
-3. CI ([`.github/workflows/release.yml`](.github/workflows/release.yml)) builds on
-   **ubuntu** (AppImage) and **windows** — the latter in **two GPU variants** — and publishes
-   the artifacts + the `latest*.yml` files to the tag's release. `electron-updater` uses those
-   files for updates.
+3. CI ([`.github/workflows/release.yml`](.github/workflows/release.yml)) builds **two GPU
+   variants per desktop OS** (ubuntu → AppImage, windows → NSIS) and publishes the artifacts
+   + the `latest*.yml` files to the tag's release. `electron-updater` uses those files for
+   updates.
 
-   | Artifact | GPU | Backend pref. | Update channel |
+   | Artifact | GPU | Backend pref. | Update file |
    |---|---|---|---|
-   | `Capsuleers.IA-Setup-NVIDIA_Cuda-<ver>.exe` | NVIDIA | CUDA → Vulkan → CPU | `latest-cuda` |
-   | `Capsuleers.IA-Setup-AMD_Vulkan-<ver>.exe` | AMD / other | Vulkan → CPU | `latest` (default) |
-   | `Capsuleers.IA-<ver>.AppImage` | any (Linux) | Vulkan → CPU | `latest-linux` |
+   | `Capsuleers.IA-Setup-NVIDIA_Cuda-<ver>.exe` | NVIDIA (Win) | CUDA → Vulkan → CPU | `latest-cuda.yml` |
+   | `Capsuleers.IA-Setup-AMD_Vulkan-<ver>.exe` | AMD/other (Win) | Vulkan → CPU | `latest.yml` (default) |
+   | `Capsuleers.IA-NVIDIA_Cuda-<ver>.AppImage` | NVIDIA (Linux) | CUDA → Vulkan → CPU | `latest-cuda-linux.yml` |
+   | `Capsuleers.IA-AMD_Vulkan-<ver>.AppImage` | AMD/other (Linux) | Vulkan → CPU | `latest-linux.yml` (default) |
 
-   Each Windows variant ships different `@node-llama-cpp` binaries via its own config
-   ([`desktop/electron-builder.win-cuda.yml`](desktop/electron-builder.win-cuda.yml) /
-   [`win-vulkan.yml`](desktop/electron-builder.win-vulkan.yml)). The channels are distinct, so
-   a CUDA install never auto-updates with the Vulkan artifact (or vice versa). The Vulkan
-   variant stays on the **default `latest` channel** on purpose: today's shipped "lite" installs
-   are already Vulkan, so they keep auto-updating with no transition release needed.
+   Each variant ships different `@node-llama-cpp` binaries via its own config
+   (`desktop/electron-builder.{win,linux}-{cuda,vulkan}.yml`). The channels are distinct, so a
+   CUDA install never auto-updates with the Vulkan artifact (or vice versa); the `-linux`
+   suffix electron-builder adds for the AppImage target keeps the Linux CUDA file
+   (`latest-cuda-linux.yml`) distinct from the Windows one (`latest-cuda.yml`). The Vulkan
+   variants stay on the **default channel** on purpose: today's shipped "lite" installs are
+   already Vulkan, so they keep auto-updating with no transition release needed.
 
-Local build (without publishing): `cd desktop && npm run dist:linux`. For Windows, build
-**on Windows** (the `win-x64-*` native binaries don't install on Linux):
-`npm run dist:win:cuda` or `npm run dist:win:vulkan` (`dist:win` = base/Vulkan-lite variant).
+Local build (without publishing): each GPU variant must be built **on its own OS** (the
+`win-x64-*` / `linux-x64-*` native binaries only install on that platform):
+- Linux: `cd desktop && npm run dist:linux:cuda` or `npm run dist:linux:vulkan`
+- Windows: `npm run dist:win:cuda` or `npm run dist:win:vulkan`
+
+(`dist:linux` / `dist:win` build the base/Vulkan-lite variant against the parent config.)
 
 ## Notes
 
 - **Code signing**: not configured. Windows will show the SmartScreen warning until
   you add an Authenticode certificate; AppImage requires no signing.
-- **CUDA**: shipped as a dedicated Windows variant (`NVIDIA_Cuda`, ~600 MB heavier) that
-  bundles `win-x64-cuda` + `win-x64-cuda-ext` (the latter carries the CUDA runtime, so the
-  user needs no CUDA Toolkit). The base/`AMD_Vulkan` build excludes `*cuda*` and stays lite.
-  Both keep Vulkan as fallback. See the variants table above.
+- **CUDA**: shipped as a dedicated `NVIDIA_Cuda` variant **on both Windows and Linux**
+  (~600 MB heavier) that bundles `*-cuda` + `*-cuda-ext` (the latter carries the CUDA runtime,
+  so the user needs no CUDA Toolkit — only the NVIDIA driver). The base/`AMD_Vulkan` builds
+  exclude `*cuda*` and stay lite. Both keep Vulkan as fallback. See the variants table above.
 - **macOS**: not included in the first release (requires Apple notarization).

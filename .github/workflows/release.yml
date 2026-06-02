@@ -18,15 +18,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Two Windows variants: NVIDIA/CUDA and AMD/Vulkan. Each uses its own
-        # electron-builder config (different bundled @node-llama-cpp binaries,
-        # different installer name, different update channel). `npm ci` on the
-        # windows runner installs both win-x64-cuda(+ext) and win-x64-vulkan, so
-        # each config just picks what to bundle via its `files` list.
+        # Two GPU variants per desktop OS: NVIDIA/CUDA and AMD/Vulkan. Each uses its own
+        # electron-builder config (different bundled @node-llama-cpp binaries, different
+        # artifact name, different update channel). `npm ci` on each runner installs both
+        # the *-cuda(+ext) and *-vulkan native binaries for that platform, so each config
+        # just picks what to bundle via its `files` list.
         include:
           - os: ubuntu-latest
-            label: linux
-            args: --linux
+            label: linux-cuda
+            args: --linux --config electron-builder.linux-cuda.yml
+          - os: ubuntu-latest
+            label: linux-vulkan
+            args: --linux --config electron-builder.linux-vulkan.yml
           - os: windows-latest
             label: windows-cuda
             args: --win --config electron-builder.win-cuda.yml

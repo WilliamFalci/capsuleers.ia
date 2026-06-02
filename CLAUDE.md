@@ -31,9 +31,10 @@ The app is self-contained: at runtime it only needs the GGUF models + the prebui
 cd desktop
 npm install
 npm start              # dev — expects models/ + data/ present locally
-npm run dist:linux     # build a Linux AppImage installer
-npm run dist:win:cuda  # Windows NSIS installer, NVIDIA/CUDA variant (build on Windows)
-npm run dist:win:vulkan # Windows NSIS installer, AMD/Vulkan variant (build on Windows)
+npm run dist:linux:cuda   # Linux AppImage, NVIDIA/CUDA variant
+npm run dist:linux:vulkan # Linux AppImage, AMD/Vulkan variant
+npm run dist:win:cuda     # Windows NSIS installer, NVIDIA/CUDA variant (build on Windows)
+npm run dist:win:vulkan   # Windows NSIS installer, AMD/Vulkan variant (build on Windows)
 npm run validate-hf    # verify embedding + catalog models exist on HuggingFace
 npm run build-index    # (re)build the vector index from a dump
 

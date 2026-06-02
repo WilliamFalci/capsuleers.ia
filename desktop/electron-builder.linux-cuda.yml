@@ -1,0 +1,44 @@
+# Linux variant: NVIDIA / CUDA (the "full" AppImage, ~600 MB heavier uncompressed).
+# Mirror of electron-builder.win-cuda.yml for the Linux/AppImage target. Re-declares
+# `files` to keep the @node-llama-cpp CUDA binaries (linux-x64-cuda + linux-x64-cuda-ext,
+# the latter carries the bundled CUDA runtime so the user needs no CUDA Toolkit — only the
+# NVIDIA driver, same as on Windows). Vulkan is kept too as a graceful fallback.
+#
+#   npm run dist:linux:cuda
+#   electron-builder --linux --config electron-builder.linux-cuda.yml
+#
+# Backend preference at runtime: CUDA → Vulkan → CPU.
+extends: electron-builder.yml
+
+# `extends` deep-merges nested objects but REPLACES arrays — so `files` must be listed in
+# full. This is the base list MINUS the `*cuda*` exclusion (Vulkan stays in as fallback).
+# Only the foreign-arch binaries are dropped.
+files:
+  - "**/*"
+  - "!models/**"          # ~16 GB of .gguf → on-demand, never in the package
+  - "!data/**"            # RAG index → downloaded/versioned separately
+  - "!build/**"           # electron-builder picks up the build resources separately
+  - "!*.py"
+  - "!build-index.mjs"
+  - "!rag.mjs"
+  - "!**/*.md"
+  - "!**/.selected-model"
+  - "!**/node_modules/node-llama-cpp/llama/llama.cpp/**"
+  - "!**/node_modules/node-llama-cpp/llama/localBuilds/**"
+  - "!**/node_modules/@node-llama-cpp/*arm*/**"
+  # NB: NO `*cuda*` exclusion here (that is what differentiates this variant).
+
+appImage:
+  artifactName: ${productName}-NVIDIA_Cuda-${version}.${ext}
+
+# Dedicated update channel → electron-builder emits `latest-cuda-linux.yml` (the `-linux`
+# suffix is added automatically for the AppImage target), distinct from the default
+# `latest-linux.yml` consumed by the AMD/Vulkan variant. So a CUDA install never pulls the
+# Vulkan AppImage. (Note: distinct from the Windows CUDA `latest-cuda.yml` thanks to the
+# platform suffix, so the two CUDA variants coexist in the same release.)
+publish:
+  provider: github
+  owner: WilliamFalci
+  repo: capsuleers.ia
+  releaseType: release
+  channel: latest-cuda

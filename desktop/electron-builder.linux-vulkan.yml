@@ -1,0 +1,19 @@
+# Linux variant: AMD/Intel / Vulkan (the "lite" AppImage).
+# Mirror of electron-builder.win-vulkan.yml for the Linux/AppImage target. Inherits
+# EVERYTHING from the base (which already excludes the *cuda* binaries), so this AppImage
+# ships Vulkan (+ CPU fallback) only.
+#
+#   npm run dist:linux:vulkan
+#   electron-builder --linux --config electron-builder.linux-vulkan.yml
+#
+# Update channel: DEFAULT (`latest` → `latest-linux.yml`), inherited from the base publish
+# block. This is deliberately the same channel today's shipped (lite/Vulkan) AppImage
+# installs already poll, so existing users keep auto-updating seamlessly and stay on the
+# Vulkan stream — no transition release needed. Only the CUDA variant uses a dedicated
+# channel (see electron-builder.linux-cuda.yml).
+extends: electron-builder.yml
+
+# NOTE on `extends`: nested objects deep-merge with the base; ARRAYS are replaced, not
+# merged. We only override the AppImage file name here.
+appImage:
+  artifactName: ${productName}-AMD_Vulkan-${version}.${ext}
