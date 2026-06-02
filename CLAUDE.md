@@ -76,6 +76,14 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   analytics (dossier, flies-with/hunts, safe routes, battles, meta/doctrines, killmail forensics).
 - [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) — Local-chat intel from the clipboard.
 - [`links.mjs`](desktop/src/links.mjs) — `linkify` + `detectLang`.
+
+**Outbound User-Agent** — every external request (in both halves) must identify the app via a single
+constant. JS: [`desktop/src/user-agent.mjs`](desktop/src/user-agent.mjs) exports `USER_AGENT`
+(version read from `package.json` via `createRequire`); Python: `USER_AGENT` in
+[`config.py`](ingestion/capsuleers_ingestion/config.py). Both render
+`Capsuleers.IA/<version> (+https://capsuleers.app; info@capsuleers.app)` (CCP `App/version (+url; contact)`
+format). Don't hardcode a UA string at a call site — import the constant; change contact/version in those
+two files only.
 - [`main.mjs`](desktop/src/main.mjs) — Electron main process, tray/mini window, electron-updater
   auto-update, `refreshDataFiles()` (re-downloads index/data files whose size no longer matches
   [`assets-manifest.json`](desktop/src/assets-manifest.json)).

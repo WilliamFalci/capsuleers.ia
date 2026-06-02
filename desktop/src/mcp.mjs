@@ -7,8 +7,9 @@
 // exactly as intel.mjs / esi.mjs / eve-scout.mjs already do. The MCP just gives us
 // higher-level, pre-computed analytics (dossier, route danger, dogma stats, battle
 // reports…) that would otherwise take many REST calls to assemble.
+import { USER_AGENT as UA } from "./user-agent.mjs";
+
 const ENDPOINT = "https://mcp.eve-kill.com/mcp";
-const UA = "Capsuleers.IA/0.1 (dedodj@gmail.com)";
 const PROTOCOL = "2025-06-18";
 const TIMEOUT = 12000;  // a slow analytics tool must never hang a chat answer
 

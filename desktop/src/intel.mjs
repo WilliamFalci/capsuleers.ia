@@ -2,9 +2,9 @@
 // Public API, no auth, CORS. Requires internet (real-time data).
 import { priceByTypeId } from "./prices.mjs";
 import { dossierExtra } from "./mcp-intel.mjs";
+import { USER_AGENT as UA } from "./user-agent.mjs";
 
 const BASE = "https://api.eve-kill.com";
-const UA = "Capsuleers.IA/0.1 (dedodj@gmail.com)";
 
 async function get(pathQ) {
   const r = await fetch(BASE + pathQ, { headers: { "User-Agent": UA } });
@@ -33,7 +33,7 @@ async function resolveNames(ids) {
   if (!uniq.length) return out;
   try {
     const r = await fetch("https://esi.evetech.net/latest/universe/names/", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(uniq.slice(0, 1000)),
+      method: "POST", headers: { "content-type": "application/json", "User-Agent": UA }, body: JSON.stringify(uniq.slice(0, 1000)),
     });
     if (r.ok) for (const x of await r.json()) out.set(x.id, x.name);
   } catch { /* offline: no names */ }

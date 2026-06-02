@@ -17,11 +17,11 @@ import time
 import urllib.request
 from collections.abc import Iterator
 
+from ..config import USER_AGENT
 from ..models import Document
 
 BASE = "https://eve-survival.org"
 INDEX = f"{BASE}/wikka.php?wakka=MissionReports"
-USER_AGENT = "Capsuleers.IA/0.1 (RAG bot; contatto: dedodj@gmail.com)"
 LICENSE = "eve-survival.org (community, nessuna licenza esplicita)"
 DELAY_SECONDS = 0.4
 

@@ -11,9 +11,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from ..config import CONFIG, DATA_DIR
-
-USER_AGENT = "Capsuleers.IA/0.1 (dedodj@gmail.com)"
+from ..config import CONFIG, DATA_DIR, USER_AGENT
 
 
 def latest_build() -> int:

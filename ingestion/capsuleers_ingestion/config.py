@@ -41,3 +41,9 @@ class Config:
 
 
 CONFIG = Config()
+
+# Single source of truth for the outbound User-Agent on every external request
+# (SDE download, EVE University Wiki, eve-survival, Anoikis). Third-party EVE service
+# operators ask callers to identify themselves with a contact; CCP's recommended ESI
+# format is `App/version (+url; contact)`. Change the contact/version here only.
+USER_AGENT = "Capsuleers.IA/0.1.0 (+https://capsuleers.app; info@capsuleers.app)"

@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { downloadFile } from "./downloader.mjs";
+import { USER_AGENT } from "./user-agent.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,7 +48,7 @@ export async function loadCatalog({ signal } = {}) {
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 5000);
-    const res = await fetch(CATALOG_URL, { signal: signal || ctl.signal, headers: { "User-Agent": "Capsuleers.IA" } });
+    const res = await fetch(CATALOG_URL, { signal: signal || ctl.signal, headers: { "User-Agent": USER_AGENT } });
     clearTimeout(t);
     if (res.ok) {
       const remote = await res.json();
@@ -61,7 +62,7 @@ export async function loadCatalog({ signal } = {}) {
 // (the LFS oid IS the content's sha256). No checksum maintenance in the catalog.
 export async function resolveHfAsset(repo, file, signal) {
   const api = `https://huggingface.co/api/models/${repo}/tree/main?recursive=1`;
-  const res = await fetch(api, { signal, headers: { "User-Agent": "Capsuleers.IA" } });
+  const res = await fetch(api, { signal, headers: { "User-Agent": USER_AGENT } });
   if (!res.ok) throw new Error(`HuggingFace ${res.status} per ${repo}`);
   const entry = (await res.json()).find((e) => e.path === file);
   if (!entry) throw new Error(`File ${file} non trovato in ${repo}`);

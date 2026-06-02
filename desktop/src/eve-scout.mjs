@@ -1,7 +1,8 @@
 // EVE-Scout (Signal Cartel) — wormhole connections scanned in real time from
 // Thera and Turnur. Public API, no auth. Volatile data (holes expire): short cache.
+import { USER_AGENT as UA } from "./user-agent.mjs";
+
 const URL = "https://api.eve-scout.com/v2/public/signatures";
-const UA = "Capsuleers.IA/0.1 (dedodj@gmail.com)";
 const TTL = 60 * 1000;
 
 // ESI for the jump distance (gates) from a reference system to the k-space

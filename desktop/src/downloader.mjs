@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { USER_AGENT } from "./user-agent.mjs";
 
 function statSize(p) { try { return fs.statSync(p).size; } catch { return 0; } }
 
@@ -68,7 +69,7 @@ export async function downloadFile({ url, dest, sha256, size, onProgress = () =>
   let start = statSize(part);
   if (size && start > size) { await fs.promises.unlink(part).catch(() => {}); start = 0; }
 
-  const headers = { "User-Agent": "Capsuleers.IA-downloader" };
+  const headers = { "User-Agent": USER_AGENT };
   if (start > 0) headers.Range = `bytes=${start}-`;
   const res = await fetch(url, { headers, redirect: "follow", signal });
   if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status} ${res.statusText} — ${url}`);

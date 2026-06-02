@@ -17,10 +17,8 @@ import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 
-from ..config import CONFIG
+from ..config import CONFIG, USER_AGENT
 from ..models import Document
-
-USER_AGENT = "Capsuleers.IA/0.1 (RAG bot; contatto: dedodj@gmail.com)"
 LICENSE = "CC-BY-SA-4.0"
 DELAY_SECONDS = 0.3  # gentle on the server
 

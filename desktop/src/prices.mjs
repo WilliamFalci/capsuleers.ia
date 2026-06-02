@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { USER_AGENT } from "./user-agent.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Data dir: defaults next to the module (dev); the packaged app points us to userData.
@@ -21,7 +22,7 @@ async function loadNames() {
 async function getPrices() {
   const now = Date.now();
   if (pricesCache && now - pricesCache.at < TTL) return pricesCache.data;
-  const res = await fetch(PRICES_URL);
+  const res = await fetch(PRICES_URL, { headers: { "User-Agent": USER_AGENT } });
   if (!res.ok) throw new Error(`prezzi HTTP ${res.status}`);
   const rows = await res.json();
   const data = new Map();

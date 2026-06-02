@@ -12,12 +12,12 @@ import json
 import urllib.request
 from pathlib import Path
 
-from ..config import CONFIG
+from ..config import CONFIG, USER_AGENT
 
 
 def download_wormhole_data() -> str:
     """Download Anoikis' wormhole.json into CONFIG.wormhole_file. Returns the path."""
-    req = urllib.request.Request(CONFIG.wormhole_url, headers={"User-Agent": "Capsuleers.IA/0.1"})
+    req = urllib.request.Request(CONFIG.wormhole_url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=60) as r:
         data = r.read()
     path = Path(CONFIG.wormhole_file)

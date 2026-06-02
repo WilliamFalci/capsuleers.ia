@@ -276,6 +276,12 @@ Only maintainers cut releases; contributors don't need to.
 **External APIs (live-data features)**
 - ESI / eve-kill / EVE-Scout / EVE Ref are public but rate-limited (e.g. eve-kill MCP ~20 req/s/IP).
   Be a good citizen: cache, back off, fail soft (a dead live-data call must not break the answer).
+- **Always send the shared `User-Agent`** on every external request — never node's default and never a
+  bespoke string. JS: `import { USER_AGENT } from "./user-agent.mjs"` ([`desktop/src/user-agent.mjs`](desktop/src/user-agent.mjs),
+  version read from `package.json`). Python: `from ..config import USER_AGENT`
+  ([`config.py`](ingestion/capsuleers_ingestion/config.py)). Both render
+  `Capsuleers.IA/<version> (+https://capsuleers.app; info@capsuleers.app)` — CCP's recommended
+  `App/version (+url; contact)` format. Change the contact/version in those two files only.
 
 **Commits & PRs**
 - Conventional-commit style is used here: `feat(fit): …`, `fix(engine): …`, `chore(deps): …`,

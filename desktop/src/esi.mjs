@@ -3,9 +3,9 @@
 // and system activity (jumps / ship kills / npc kills / pod kills) per
 // geographic area. Public endpoints, no auth, datasource=tranquility. Requires internet.
 import { search } from "./intel.mjs";
+import { USER_AGENT as UA } from "./user-agent.mjs";
 
 const ESI = "https://esi.evetech.net/latest";
-const UA = "Capsuleers.IA/0.1 (dedodj@gmail.com)";
 
 async function get(p) {
   const r = await fetch(`${ESI}${p}${p.includes("?") ? "&" : "?"}datasource=tranquility`, { headers: { "User-Agent": UA } });
