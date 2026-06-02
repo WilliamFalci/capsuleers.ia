@@ -973,11 +973,13 @@
       return wrap;
     }
 
+    const scrollBottom = () => { chat.scrollTop = chat.scrollHeight; };
+    const nearBottom = () => chat.scrollHeight - chat.scrollTop - chat.clientHeight < 140;
     function bubble(cls) {
       const d = document.createElement("div");
       d.className = "msg " + cls;
       chat.appendChild(d);
-      chat.scrollTop = chat.scrollHeight;
+      scrollBottom();
       return d;
     }
 
@@ -1289,6 +1291,19 @@
       }
       if (!res.error && res.kills?.length) current.appendChild(renderKills(res.kills));
       if (!res.error && res.cards?.items?.length) { current.classList.add("with-cards"); current.appendChild(renderCards(res.cards)); }
+      // Follow the full answer: the streamed-token scroll stops at the (often 1-line) intro,
+      // so the markdown re-render + appended sources/kills/cards land below the fold. Scroll
+      // to the bottom now, and keep following as the card/portrait images load and grow the
+      // layout — but only while the user is still near the bottom (don't yank them if they
+      // scrolled up to read history).
+      scrollBottom();
+      requestAnimationFrame(scrollBottom);
+      current.querySelectorAll("img").forEach((im) => {
+        if (im.complete) return;
+        const follow = () => { if (nearBottom()) scrollBottom(); };
+        im.addEventListener("load", follow, { once: true });
+        im.addEventListener("error", follow, { once: true });
+      });
       current = null; body = null;
       q.disabled = false; send.disabled = false; q.focus();
     }
