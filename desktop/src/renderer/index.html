@@ -475,9 +475,26 @@
 
     /* Input */
     footer {
+      position: relative;
       display: flex; gap: .6rem; padding: .8rem 1rem;
       background: #0e1014; border-top: 1px solid var(--line);
     }
+    /* Slash-command menu (opens above the input when the draft is "/…"). */
+    #slash {
+      position: absolute; left: 1rem; right: 1rem; bottom: calc(100% - .4rem);
+      max-height: 46vh; overflow-y: auto; z-index: 40;
+      background: #0e1014; border: 1px solid var(--orange-dim); border-radius: 3px;
+      box-shadow: 0 -8px 28px rgba(0,0,0,.55); padding: .3rem;
+    }
+    #slash::-webkit-scrollbar { width: 9px; }
+    #slash::-webkit-scrollbar-thumb { background: #2a2f38; }
+    .scmd { display: grid; grid-template-columns: minmax(7.5rem, auto) 1fr; gap: .6rem; align-items: baseline;
+            padding: .4rem .55rem; border-radius: 2px; cursor: pointer; }
+    .scmd:hover, .scmd.sel { background: #1a1d22; }
+    .scmd .sc-cmd { font-family: ui-monospace, monospace; font-weight: 700; color: var(--orange); white-space: nowrap; }
+    .scmd.sel .sc-cmd { color: #ffb066; }
+    .scmd .sc-desc { font-size: .8rem; color: #c4c7c5; }
+    .scmd .sc-arg { color: var(--muted); font-style: italic; }
     textarea {
       flex: 1; resize: none; padding: .7rem .9rem; font: inherit;
       background: #0a0b0d; color: var(--text);
@@ -735,6 +752,7 @@
 
   <div id="chat"></div>
   <footer>
+    <div id="slash" hidden></div>
     <textarea id="q" rows="2" data-i18n-ph="inputPlaceholder" disabled></textarea>
     <button id="send" data-i18n="btnSend" disabled>Invia</button>
   </footer>
@@ -1509,7 +1527,7 @@
         modelsTitle: "MODELLO <b>IA</b>",
         modelsHint: "Stima sulla VRAM <b>libera ora</b>: più layer entrano in GPU, più la risposta è veloce. Chiudere altre app che usano la GPU (browser, Steam…) libera VRAM e accelera i modelli più grandi. I tempi sono indicativi per una risposta tipica.<br>Il modello che scegli diventa il <b>predefinito</b> e verrà riusato a ogni riavvio dell'app.",
         localTitle: "INTEL <b>LOCAL</b>",
-        inputPlaceholder: "// interroga: skill, fitting, wormhole, sovereignty, missioni…",
+        inputPlaceholder: "// interroga: skill, fitting, wormhole…  —  digita / per i comandi",
         btnSend: "Invia",
         localOn: "Ascolto appunti ATTIVO — copia la Local da EVE. Click per disattivare.",
         localOff: "Intel Local da appunti (spento) — click per attivare",
@@ -1591,7 +1609,7 @@
         modelsTitle: "<b>AI</b> MODEL",
         modelsHint: "Estimate on the VRAM <b>free now</b>: the more layers fit in GPU, the faster the reply. Closing other apps that use the GPU (browser, Steam…) frees VRAM and speeds up bigger models. Times are indicative for a typical answer.<br>The model you choose becomes the <b>default</b> and is reused on every app restart.",
         localTitle: "<b>LOCAL</b> INTEL",
-        inputPlaceholder: "// ask: skills, fitting, wormholes, sovereignty, missions…",
+        inputPlaceholder: "// ask: skills, fitting, wormholes…  —  type / for commands",
         btnSend: "Send",
         localOn: "Clipboard watch ON — copy the Local from EVE. Click to disable.",
         localOff: "Local intel from clipboard (off) — click to enable",
@@ -1719,8 +1737,113 @@
     let qDraft = "";           // the live input, saved while navigating history
     const caretToEnd = () => { const n = q.value.length; q.setSelectionRange(n, n); };
 
+    // ── Slash commands ──────────────────────────────────────────────────────
+    // Friendly shortcuts that EXPAND into the natural-language prompt the engine already
+    // understands. `i` = inserted text (a lead-in ending in a space takes an argument); `a`
+    // = the argument hint shown in the menu. Typing "/" opens the menu; it filters as you type.
+    const SLASH = {
+      it: [
+        { c: "dottrine", d: "Dottrine/fit dominanti di un'alleanza o corp", i: "dottrine di ", a: "<corp/alleanza>" },
+        { c: "fit", d: "Cerca un fit della community per una nave", i: "voglio un fit per ", a: "<nave> [pvp/pve…]" },
+        { c: "specifiche", d: "Statistiche + EFT di un fit dalla lista/dottrina", i: "specifiche del #", a: "<N>" },
+        { c: "chi-è", d: "Intel su pilota / corp / alleanza", i: "chi è ", a: "<nome>" },
+        { c: "vola-con", d: "Compagni di volo abituali", i: "con chi vola ", a: "<pilota>" },
+        { c: "prede", d: "Chi uccide più spesso (le sue prede)", i: "prede di ", a: "<entità>" },
+        { c: "cacciatori", d: "Chi lo uccide più spesso", i: "chi uccide ", a: "<entità>" },
+        { c: "caccia", d: "Sistemi di caccia preferiti", i: "dove caccia ", a: "<pilota>" },
+        { c: "efficienza", d: "K:D, ISK ratio, solo rate, fasce orarie", i: "efficienza di ", a: "<entità>" },
+        { c: "panoramica", d: "Riepilogo killboard (kill/perdite, ISK, top navi)", i: "panoramica di ", a: "<entità>" },
+        { c: "classifica", d: "Top sistemi/regioni/navi/alleanze", i: "top sistemi di ", a: "<entità>" },
+        { c: "navi", d: "Navi più usate", i: "che navi usa ", a: "<entità>" },
+        { c: "battaglie", d: "Ultime battaglie (per ISK distrutti)", i: "ultime battaglie" },
+        { c: "report-battaglia", d: "Recap di una battaglia per ID", i: "report battaglia ", a: "<id>" },
+        { c: "kill-costosi", d: "Kill più costosi (ultimi 30 giorni)", i: "kill più costosi" },
+        { c: "ultimi-kill", d: "Ultimi kill di un'entità", i: "ultimi kill di ", a: "<entità>" },
+        { c: "killmail", d: "Analizza un killmail (link o ID)", i: "analizza il killmail ", a: "<link/id>" },
+        { c: "guerra", d: "Scontro testa a testa (X vs Y)", i: "guerra tra ", a: "<X> e <Y>" },
+        { c: "rotta", d: "Rotta sicura con pericolosità per salto", i: "rotta sicura da ", a: "<X> a <Y>" },
+        { c: "sistema", d: "Pericolosità/attività di un sistema", i: "quanto è pericoloso ", a: "<sistema>" },
+        { c: "meta", d: "Meta del momento (fit/dottrine più diffusi)", i: "qual è la meta del momento" },
+        { c: "coalizioni", d: "Grafo coalizioni (alleati/nemici)", i: "coalizioni" },
+        { c: "storia", d: "Storia di appartenenza corp/alleanza", i: "storia di ", a: "<pilota>" },
+        { c: "prezzo", d: "Prezzo di riferimento di un oggetto", i: "prezzo di ", a: "<oggetto>" },
+        { c: "thera", d: "Collegamento Thera/Turnur più vicino", i: "collegamento Thera più vicino a ", a: "<sistema>" },
+      ],
+      en: [
+        { c: "doctrines", d: "Dominant doctrines/fits of an alliance or corp", i: "doctrines of ", a: "<corp/alliance>" },
+        { c: "fit", d: "Search a community fit for a ship", i: "I want a fit for ", a: "<ship> [pvp/pve…]" },
+        { c: "specs", d: "Stats + EFT of a fit from the list/doctrine", i: "specs of #", a: "<N>" },
+        { c: "who-is", d: "Intel on pilot / corp / alliance", i: "who is ", a: "<name>" },
+        { c: "flies-with", d: "Frequent wingmates", i: "who flies with ", a: "<pilot>" },
+        { c: "prey", d: "Who they kill most (their prey)", i: "who does ", a: "<entity> prey on" },
+        { c: "hunters", d: "Who kills them most", i: "who hunts ", a: "<entity>" },
+        { c: "hunts", d: "Preferred hunting systems", i: "where does ", a: "<entity> hunt" },
+        { c: "efficiency", d: "K:D, ISK ratio, solo rate, activity", i: "efficiency of ", a: "<entity>" },
+        { c: "overview", d: "Killboard overview (kills/losses, ISK, top ships)", i: "overview of ", a: "<entity>" },
+        { c: "top", d: "Top systems/regions/ships/alliances", i: "top systems of ", a: "<entity>" },
+        { c: "ships", d: "Most flown ships", i: "what ships does ", a: "<entity> use" },
+        { c: "battles", d: "Recent battles (by ISK destroyed)", i: "recent battles" },
+        { c: "battle-report", d: "Recap of a battle by ID", i: "battle report ", a: "<id>" },
+        { c: "expensive-kills", d: "Most expensive kills (last 30 days)", i: "most expensive kills" },
+        { c: "recent-kills", d: "Recent kills of an entity", i: "recent kills of ", a: "<entity>" },
+        { c: "killmail", d: "Analyze a killmail (link or ID)", i: "analyze killmail ", a: "<link/id>" },
+        { c: "war", d: "Head-to-head (X vs Y)", i: "war between ", a: "<X> and <Y>" },
+        { c: "route", d: "Safe route with per-hop danger", i: "safe route from ", a: "<X> to <Y>" },
+        { c: "system", d: "Danger/activity of a system", i: "how dangerous is ", a: "<system>" },
+        { c: "meta", d: "Current meta (most common fits/doctrines)", i: "what's the meta right now" },
+        { c: "coalitions", d: "Coalition graph (allies/enemies)", i: "coalitions" },
+        { c: "history", d: "Corp/alliance membership history", i: "history of ", a: "<pilot>" },
+        { c: "price", d: "Reference price of an item", i: "price of ", a: "<item>" },
+        { c: "thera", d: "Closest Thera/Turnur connection", i: "closest Thera connection to ", a: "<system>" },
+      ],
+    };
+    const SLASH_CMDS = SLASH[SYS_LANG] || SLASH.en;
+    const slashEl = document.getElementById("slash");
+    let slashItems = [], slashIdx = 0;
+    const slashVisible = () => !slashEl.hidden;
+    function hideSlash() { slashEl.hidden = true; slashItems = []; }
+    function renderSlash() {
+      slashEl.innerHTML = slashItems.map((c, n) =>
+        `<div class="scmd${n === slashIdx ? " sel" : ""}" data-i="${n}">`
+        + `<span class="sc-cmd">/${esc(c.c)}${c.a ? ` <span class="sc-arg">${esc(c.a)}</span>` : ""}</span>`
+        + `<span class="sc-desc">${esc(c.d)}</span></div>`).join("");
+      slashEl.hidden = !slashItems.length;
+      const sel = slashEl.querySelector(".scmd.sel");
+      if (sel) sel.scrollIntoView({ block: "nearest" });
+    }
+    // Show the menu only while the whole draft is a bare "/token" (before any argument).
+    function updateSlash() {
+      const m = q.value.match(/^\/([\p{L}\-]*)$/u);
+      if (!m) return hideSlash();
+      const t = m[1].toLowerCase();
+      slashItems = SLASH_CMDS.filter((c) => c.c.includes(t) || c.d.toLowerCase().includes(t))
+        .sort((a, b) => (b.c.startsWith(t) ? 1 : 0) - (a.c.startsWith(t) ? 1 : 0));
+      slashIdx = 0;
+      renderSlash();
+    }
+    function applySlash(item) {
+      if (!item) return;
+      q.value = item.i; hideSlash(); q.focus(); caretToEnd();
+    }
+    // Expand a submitted "/cmd args" into its natural-language prompt (no-op otherwise).
+    function expandSlash(text) {
+      const m = text.match(/^\/([\p{L}\-]+)\s*([\s\S]*)$/u);
+      if (!m) return text;
+      const cmd = SLASH_CMDS.find((c) => c.c === m[1].toLowerCase());
+      if (!cmd) return text;
+      const arg = m[2].trim();
+      return cmd.i.endsWith(" ") ? (cmd.i + arg).trim() : cmd.i;
+    }
+    q.addEventListener("input", updateSlash);
+    q.addEventListener("blur", () => setTimeout(hideSlash, 120));   // let a click register first
+    slashEl.addEventListener("mousedown", (e) => {                  // mousedown: fire before blur
+      const row = e.target.closest(".scmd"); if (!row) return;
+      e.preventDefault(); applySlash(slashItems[Number(row.dataset.i)]);
+    });
+
     async function askNow() {
-      const text = q.value.trim();
+      hideSlash();
+      const text = expandSlash(q.value.trim());   // "/dottrine X" → "dottrine di X"
       if (!text) return;
       if (inputHistory[inputHistory.length - 1] !== text) inputHistory.push(text);  // recall with ↑/↓
       if (inputHistory.length > 100) inputHistory.shift();
@@ -1764,6 +1887,13 @@
 
     send.addEventListener("click", askNow);
     q.addEventListener("keydown", (e) => {
+      // Slash menu open: arrows navigate, Enter/Tab pick, Esc closes — before submit/history.
+      if (slashVisible()) {
+        if (e.key === "ArrowDown") { slashIdx = (slashIdx + 1) % slashItems.length; renderSlash(); e.preventDefault(); return; }
+        if (e.key === "ArrowUp") { slashIdx = (slashIdx - 1 + slashItems.length) % slashItems.length; renderSlash(); e.preventDefault(); return; }
+        if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); applySlash(slashItems[slashIdx]); return; }
+        if (e.key === "Escape") { e.preventDefault(); hideSlash(); return; }
+      }
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askNow(); return; }
       // ↑ recalls older questions, ↓ newer — but only when the caret is on the
       // first/last line, so arrows still move within a multi-line draft.
