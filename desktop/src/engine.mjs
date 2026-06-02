@@ -751,9 +751,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     { on: !!liveIntel,
       it: "\nIMPORTANTE: il CONTESTO include DATI LIVE autorevoli (EVE-Scout/ESI/killboard/prezzi): rispondi usandoli, NON dire che l'informazione manca.",
       en: "\nIMPORTANT: the CONTEXT includes authoritative LIVE DATA (EVE-Scout/ESI/killboard/prices): answer using it, do NOT say the information is missing." },
-    { on: !!(mcp.cards || mcp.kills),
-      it: "\nI risultati dettagliati sono mostrati come SCHEDE/LISTA sotto la tua risposta: scrivi SOLO una breve frase introduttiva (1 riga), NON elencare i singoli risultati e NON ripetere i numeri.",
-      en: "\nThe detailed results are shown as CARDS/LIST below your answer: write ONLY a short one-line intro, do NOT enumerate the individual results and do NOT repeat the numbers." },
+    { on: !!(mcp.cards || mcp.kills || intel.card),
+      it: "\nI risultati dettagliati sono mostrati come SCHEDA/LISTA sotto la tua risposta: scrivi SOLO una breve frase introduttiva (1 riga), NON elencare i singoli risultati e NON ripetere i numeri.",
+      en: "\nThe detailed results are shown as a CARD/LIST below your answer: write ONLY a short one-line intro, do NOT enumerate the individual results and do NOT repeat the numbers." },
     { on: !!scout.text,
       it: "\nPer un collegamento Thera/Turnur indica SEMPRE entrambe le signature: quella di ENTRATA (da scansionare nel sistema k-space) e quella di USCITA (da scansionare in Thera/Turnur). Se i dati EVE-Scout contengono un AVVISO (⚠, es. il riferimento è una regione/costellazione e non un sistema), riportalo chiaramente all'utente.",
       en: "\nFor a Thera/Turnur connection ALWAYS give both wormhole signatures: the ENTRY one (to scan in the k-space system) and the EXIT one (to scan in Thera/Turnur). If the EVE-Scout data contains a WARNING (⚠, e.g. the reference is a region/constellation, not a system), relay it clearly to the user." },
@@ -844,5 +844,5 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
       .slice(0, 5).map((h) => ({ title: h.title, type: h.type, url: h.url }));
     sources = [...apiSources, ...rag];
   }
-  return { answer: linked, sources, kills: (mcp.kills?.length ? mcp.kills : intel.kills), cards: mcp.cards || null };
+  return { answer: linked, sources, kills: (mcp.kills?.length ? mcp.kills : intel.kills), cards: mcp.cards || intel.card || null };
 }

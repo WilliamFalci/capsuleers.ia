@@ -236,6 +236,25 @@
     .rr-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .rr-kl { font-size: .7rem; color: #c4c7c5; white-space: nowrap; }
     .rr-isk { font-family: ui-monospace, monospace; font-size: .74rem; color: var(--orange); white-space: nowrap; }
+    /* Pilot card: badges, playstyle distribution bar, wingmate chips. */
+    .pbadges { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .6rem; }
+    .pbadge { font-size: .64rem; text-transform: uppercase; letter-spacing: .03em; color: #c4c7c5;
+              background: #0a0b0d; border: 1px solid var(--line); border-radius: 3px; padding: .12rem .4rem; }
+    .pbadge.fc { color: #1a0d02; background: var(--orange); border-color: var(--orange); font-weight: 700; }
+    .ps-wrap { margin-top: .7rem; }
+    .ps-wrap .pbar { display: flex; height: 8px; border-radius: 3px; overflow: hidden; background: #1a1d22; }
+    .ps-wrap .pbar i { display: block; height: 100%; }
+    .ps-legend { display: flex; flex-wrap: wrap; gap: .1rem .7rem; margin-top: .35rem; font-size: .66rem; color: var(--muted); }
+    .ps-legend span { display: inline-flex; align-items: center; gap: .25rem; }
+    .ps-legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+    .ps-avg { margin-top: .25rem; font-size: .66rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    .wm-wrap { margin-top: .7rem; }
+    .wm-row { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .wm-chip { display: flex; align-items: center; gap: .35rem; text-decoration: none; color: #c4c7c5;
+               background: #0a0b0d; border: 1px solid var(--line); border-radius: 14px; padding: .15rem .5rem .15rem .15rem; font-size: .74rem; }
+    .wm-chip:hover { border-color: var(--orange-dim); color: var(--text); }
+    .wm-chip img { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; background: #0a0b0d; }
+    .wm-chip i { font-style: normal; font-family: ui-monospace, monospace; font-size: .66rem; color: var(--orange); }
     .kill {
       display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
       grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
@@ -1003,11 +1022,12 @@
       : `${IMG}/types/${id}/render?size=${size}`;
     const statCell = (label, val) => val == null || val === "" ? "" :
       `<div class="gc-s"><span class="gc-v">${esc(String(val))}</span><span class="gc-l">${esc(label)}</span></div>`;
+    const nFmt = (n) => Number(n) >= 1000 ? (Number(n) / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(Number(n) || 0);
     const shipStrip = (title, ships) => !ships?.length ? "" :
       `<div class="ship-strip"><div class="ss-title">${esc(title)}</div><div class="ss-row">` +
       ships.map((s) => `<a class="ss-item" href="https://eve-kill.com/item/${s.id}" title="${esc(s.name || "")}">`
         + `<img src="${entityImg("ship", s.id, 32)}" alt="" /><span>${esc(s.name || "")}</span>`
-        + `<i>${fmtIsk(s.n)}</i></a>`).join("") + `</div></div>`;
+        + `<i>${nFmt(s.n)}</i></a>`).join("") + `</div></div>`;
 
     function entityHead(e, sub) {
       const img = e.id ? `<img class="eh-img" src="${entityImg(e.type, e.id, 64)}" alt="" />` : "";
@@ -1082,6 +1102,47 @@
       return el;
     }
 
+    const PS_COLOR = { solo: "#34d399", small: "#38bdf8", mid: "#f97316", fleet: "#a78bfa", blob: "#fb7185" };
+    function pilotEl(c) {
+      const C = L.cards, e = c.entity;
+      const el = document.createElement("div"); el.className = "panel";
+      el.appendChild(entityHead(e, null));
+      // Badges: dominant playstyle + FC likelihood + archetype tags + flags.
+      const badges = [];
+      if (c.playstyle?.dominant) badges.push(`<span class="gc-badge">${esc(c.playstyle.dominant)}</span>`);
+      if (c.fc) badges.push(`<span class="pbadge fc">FC: ${esc(c.fc)}</span>`);
+      for (const t of (c.tags || [])) badges.push(`<span class="pbadge">${esc(t)}</span>`);
+      for (const f of (c.flags || [])) badges.push(`<span class="pbadge">${esc(f)}</span>`);
+      if (badges.length) { const b = document.createElement("div"); b.className = "pbadges"; b.innerHTML = badges.join(""); el.appendChild(b); }
+      // Stat grid.
+      const grid = document.createElement("div"); grid.className = "gc-stats wide";
+      grid.innerHTML = statCell(C.kills, c.stats.kills != null ? (+c.stats.kills).toLocaleString() : null)
+        + statCell(C.losses, c.stats.losses != null ? (+c.stats.losses).toLocaleString() : null)
+        + statCell(C.iskEff, c.stats.iskEff != null ? c.stats.iskEff + "%" : null);
+      el.appendChild(grid);
+      // Playstyle distribution bar (solo/small/mid/fleet/blob).
+      if (c.playstyle?.bars?.some(([, v]) => v > 0)) {
+        const ps = document.createElement("div"); ps.className = "ps-wrap";
+        const segs = c.playstyle.bars.filter(([, v]) => v > 0)
+          .map(([k, v]) => `<i style="width:${v}%;background:${PS_COLOR[k] || "#888"}" title="${(C.ps && C.ps[k]) || k}: ${v}%"></i>`).join("");
+        const legend = c.playstyle.bars.map(([k, v]) => `<span><b style="background:${PS_COLOR[k] || "#888"}"></b>${(C.ps && C.ps[k]) || k} ${v}%</span>`).join("");
+        ps.innerHTML = `<div class="pbar">${segs}</div><div class="ps-legend">${legend}</div>`
+          + (c.playstyle.avgFleet != null ? `<div class="ps-avg">${C.avgFleet}: ${c.playstyle.avgFleet}</div>` : "");
+        el.appendChild(ps);
+      }
+      // Recent ships + wingmates.
+      if (c.ships?.length) { const s = document.createElement("div"); s.innerHTML = shipStrip(L.recentShips, c.ships); el.appendChild(s); }
+      if (c.wingmates?.length) {
+        const w = document.createElement("div"); w.className = "wm-wrap";
+        w.innerHTML = `<div class="ss-title">${esc(L.fliesWith)}</div><div class="wm-row">`
+          + c.wingmates.map((p) => `<a class="wm-chip" href="https://eve-kill.com/character/${p.id}" title="${esc(p.name)}">`
+            + `<img src="${entityImg("character", p.id, 32)}" alt="" /><span>${esc(p.name)}</span>`
+            + (p.shared != null ? `<i>${nFmt(p.shared)}</i>` : "") + `</a>`).join("") + `</div>`;
+        el.appendChild(w);
+      }
+      return el;
+    }
+
     function renderCards(cards) {
       const wrap = document.createElement("div");
       if (cards.kind === "battles") { wrap.className = "cardgrid"; for (const b of cards.items) wrap.appendChild(battleCardEl(b)); return wrap; }
@@ -1089,6 +1150,7 @@
       if (cards.kind === "profile") wrap.appendChild(profileEl(cards));
       else if (cards.kind === "stats") wrap.appendChild(statsEl(cards));
       else if (cards.kind === "rank") wrap.appendChild(rankEl(cards));
+      else if (cards.kind === "pilot") wrap.appendChild(pilotEl(cards));
       return wrap;
     }
 
@@ -1221,7 +1283,8 @@
           kills: "Kill", losses: "Perdite", kd: "K/D", iskRatio: "ISK ratio", iskEff: "ISK eff.", soloRate: "Solo %", finalBlows: "Final blow", gang: "Gang medio",
           iskDestroyed: "ISK distrutti", iskLost: "ISK persi", solo: "Solo kill", peak: "Picco attività", shipsFlown: "Navi più usate", shipsLost: "Navi più perse",
           dim: { ship_flown: "Navi più volate", ship_lost: "Navi più perse", system: "Sistemi più attivi", constellation: "Costellazioni più attive", region: "Regioni più attive",
-            killed_alliance: "Alleanze più uccise", dies_to_alliance: "Uccisa più spesso da (alleanze)", killed_corporation: "Corp più uccise", dies_to_corporation: "Uccisa più spesso da (corp)" } },
+            killed_alliance: "Alleanze più uccise", dies_to_alliance: "Uccisa più spesso da (alleanze)", killed_corporation: "Corp più uccise", dies_to_corporation: "Uccisa più spesso da (corp)" },
+          ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Flotta", blob: "Blob" }, avgFleet: "Flotta media" },
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1296,7 +1359,8 @@
           kills: "Kills", losses: "Losses", kd: "K/D", iskRatio: "ISK ratio", iskEff: "ISK eff.", soloRate: "Solo %", finalBlows: "Final blows", gang: "Avg gang",
           iskDestroyed: "ISK destroyed", iskLost: "ISK lost", solo: "Solo kills", peak: "Peak activity", shipsFlown: "Top ships flown", shipsLost: "Top ships lost",
           dim: { ship_flown: "Top ships flown", ship_lost: "Top ships lost", system: "Most active systems", constellation: "Most active constellations", region: "Most active regions",
-            killed_alliance: "Alliances killed most", dies_to_alliance: "Most killed by (alliances)", killed_corporation: "Corps killed most", dies_to_corporation: "Most killed by (corps)" } },
+            killed_alliance: "Alliances killed most", dies_to_alliance: "Most killed by (alliances)", killed_corporation: "Corps killed most", dies_to_corporation: "Most killed by (corps)" },
+          ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Fleet", blob: "Blob" }, avgFleet: "Avg fleet" },
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,

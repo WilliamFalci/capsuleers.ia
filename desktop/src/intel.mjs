@@ -1,7 +1,7 @@
 // Live intel from eve-kill.com (killboard): characters, corporations, alliances.
 // Public API, no auth, CORS. Requires internet (real-time data).
 import { priceByTypeId } from "./prices.mjs";
-import { dossierExtra } from "./mcp-intel.mjs";
+import { dossierExtra, characterCard } from "./mcp-intel.mjs";
 import { USER_AGENT as UA } from "./user-agent.mjs";
 
 const BASE = "https://api.eve-kill.com";
@@ -176,6 +176,7 @@ async function intelForHit(hit, opts = {}) {
   if (!pid) return null;
   try {
     const parts = [];
+    let card = null;
     const entities = [{ name: hit.name, type: pid.type, id: pid.id }];
     if (pid.type === "character") {
       const [st, it] = await Promise.allSettled([
@@ -183,9 +184,17 @@ async function intelForHit(hit, opts = {}) {
         get(`/characters/${pid.id}/intel?days=90`),
       ]);
       parts.push(fmtCharacter(hit.name, st.value, it.value));
-      // Extra archetypes/playstyle/wingmates from the eve-kill MCP dossier (best-effort).
-      const extra = await dossierExtra(pid.id, "character").catch(() => "");
-      if (extra) parts.push(extra);
+      // Rich pilot card (portrait + stats + playstyle bars + ship/wingmate chips) from the
+      // eve-kill MCP dossier, enriched with FC likelihood / flags from the intel endpoint.
+      const iv = it.value || {};
+      const flags = [];
+      if (iv.capital_pilot) flags.push("capital");
+      if (iv.is_logi) flags.push("logi");
+      if (iv.bait && iv.bait !== "None") flags.push("bait");
+      const fc = iv.fc?.likelihood && iv.fc.likelihood !== "None" ? iv.fc.likelihood : null;
+      const built = await characterCard(pid.id, hit.name, { fc, flags, stats: st.value }).catch(() => null);
+      if (built) { card = built.card; parts.push(`Dossier: ${built.summary}`); }
+      else { const extra = await dossierExtra(pid.id, "character").catch(() => ""); if (extra) parts.push(extra); }
     } else {
       const sep = pid.type === "alliance" ? "alliances" : "corporations";
       const stats = await get(`/${sep}/${pid.id}/stats/alltime`);
@@ -205,6 +214,7 @@ async function intelForHit(hit, opts = {}) {
       text: `INTEL eve-kill.com (dati live):\n${parts.join("\n")}\nFonte: https://eve-kill.com/${pid.type}/${pid.id}`,
       entities,
       kills,
+      card,
     };
   } catch {
     return null;
