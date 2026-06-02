@@ -56,6 +56,52 @@ journalctl --user -u capsuleers-sde-update.service -f   # logs
 
 - The first full run (~59k chunks) takes ~45 min of embedding on CPU; subsequent
   runs are much faster thanks to the cache.
-- The EVE University Wiki has its own cadence: to update it, rerun the
-  crawl (`run --wiki --dump ...`) and then `run --from-dump`. A similar
-  timer can be added if needed.
+- The EVE University Wiki has its own incremental daily job — see below.
+
+## EVE University wiki auto-update
+
+The wiki has its own daily job, analogous to the SDE one but **incremental**.
+
+1. **Change detection** — queries the MediaWiki `recentchanges` API (the structured
+   equivalent of `Special:RecentChanges`) for ns0 edits/new pages + delete/move logs
+   since the timestamp saved in `ingestion/data/wiki_state.json`. Skips bot edits.
+2. **Incremental re-index** — re-scrapes ONLY the changed titles, removes their old
+   chunks (delete-by `doc_id`) and re-inserts the current content **in place** on the
+   live collection (SDE + missions untouched). Embeds only the changed pages; the
+   embed cache dedupes the rest → seconds, not the ~45 min of a full rebuild.
+
+```bash
+cd ingestion
+python -m capsuleers_ingestion.wiki_update --check   # how many pages changed (exit 1 = changes)
+python -m capsuleers_ingestion.wiki_update           # apply the incremental update
+python -m capsuleers_ingestion.wiki_update --force    # ignore saved state, re-scan last 7 days
+```
+
+Schedule it like the SDE timer (runs 11:30, offset from the SDE's 11:00):
+
+```bash
+cp ops/capsuleers-wiki-update.service ~/.config/systemd/user/
+cp ops/capsuleers-wiki-update.timer   ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now capsuleers-wiki-update.timer
+```
+
+> A full wiki rebuild (the source of truth) is still `run --wiki --dump …` →
+> `run --from-dump`; `wiki_update` only keeps the index fresh between rebuilds.
+
+## Publishing the desktop index (reaching end-users)
+
+The SDE/wiki jobs above refresh the **server** Qdrant collection. The desktop app
+ships a **flat file index** (`index.vec` + meta + names) hosted on the GitHub release
+`index-<date>`. `ops/publish-index.sh` closes the loop:
+
+```bash
+ops/publish-index.sh        # export flat index from Qdrant → gh release index-<date> → bump manifest
+```
+
+It exports the current Qdrant collection, recomputes sizes/sha256, bumps
+`desktop/src/assets-manifest.json` (`index.version`/`baseUrl`/`files`) and pushes it.
+**Desktop apps fetch that manifest at launch** (`assets.mjs` `INDEX_MANIFEST_URL`) and
+auto-download the new index when the version changes (offering a restart). Requires an
+authenticated `gh`. Because the vector file is ~290 MB, run this on a **slow cadence**
+(e.g. weekly, or only when the wiki/SDE jobs reported changes) — not per edit.

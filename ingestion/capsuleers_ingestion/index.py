@@ -12,7 +12,9 @@ import uuid
 from collections.abc import Iterable
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import (
+    Distance, FieldCondition, Filter, FilterSelector, MatchAny, PointStruct, VectorParams,
+)
 
 from .chunk import Chunk
 from .config import CONFIG
@@ -33,12 +35,43 @@ def ensure_collection(client: QdrantClient, collection: str) -> None:
         collection_name=collection,
         vectors_config=VectorParams(size=CONFIG.embed_dim, distance=Distance.COSINE),
     )
-    # Metadata indexes for fast filtering (type=skill/ship/...).
-    for field in ("type", "category"):
+    # Metadata indexes for fast filtering (type=skill/ship/...) and for the
+    # incremental wiki update's delete-by-page (doc_id / url).
+    for field in ("type", "category", "doc_id", "url"):
         try:
             client.create_payload_index(collection, field_name=field, field_schema="keyword")
         except Exception:  # noqa: BLE001 — already present / different version
             pass
+
+
+def resolve_collection(client: QdrantClient, name: str) -> str:
+    """If `name` is an alias (e.g. the live `eve_knowledge`), returns the real
+    collection it points to; otherwise returns `name`. Lets the incremental wiki
+    update mutate the currently-active collection in place."""
+    try:
+        for a in client.get_aliases().aliases:
+            if a.alias_name == name:
+                return a.collection_name
+    except Exception:  # noqa: BLE001
+        pass
+    return name
+
+
+def delete_by_doc_ids(client: QdrantClient, doc_ids: Iterable[str], collection: str | None = None) -> int:
+    """Removes ALL chunks belonging to the given Document ids (one page = many
+    chunks). Used by the incremental wiki update before re-inserting a changed page,
+    and to drop pages that were deleted/moved. Returns the number of doc_ids targeted."""
+    collection = collection or CONFIG.collection
+    ids = [d for d in dict.fromkeys(doc_ids) if d]   # dedupe, keep order
+    if not ids or not client.collection_exists(collection):
+        return 0
+    client.delete(
+        collection_name=collection,
+        points_selector=FilterSelector(filter=Filter(
+            must=[FieldCondition(key="doc_id", match=MatchAny(any=ids))]
+        )),
+    )
+    return len(ids)
 
 
 def index_chunks(

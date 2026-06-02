@@ -11,16 +11,27 @@ MediaWiki policy: identifiable User-Agent + rate-limiting.
 
 from __future__ import annotations
 
-import json
 import time
-import urllib.parse
-import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
-from ..config import CONFIG, USER_AGENT
 from ..models import Document
+from .api import api_get, page_url
+
 LICENSE = "CC-BY-SA-4.0"
 DELAY_SECONDS = 0.3  # gentle on the server
+
+
+def _doc(resolved: str, text: str) -> Document:
+    """Builds the indexable Document for a resolved page title + plain text."""
+    return Document(
+        id=f"wiki:{resolved.replace(' ', '_')}",
+        type="guide",
+        title=resolved,
+        text=f"{resolved}\n{text}",
+        source="eve_university_wiki",
+        url=page_url(resolved),
+        metadata={"license": LICENSE, "category": "WikiArticle"},
+    )
 
 
 def scrape_wiki(limit: int | None = None, delay: float = DELAY_SECONDS) -> Iterator[Document]:
@@ -34,18 +45,21 @@ def scrape_wiki(limit: int | None = None, delay: float = DELAY_SECONDS) -> Itera
         time.sleep(delay)
         if not text:
             continue
-        yield Document(
-            id=f"wiki:{resolved.replace(' ', '_')}",
-            type="guide",
-            title=resolved,
-            text=f"{resolved}\n{text}",
-            source="eve_university_wiki",
-            url=_page_url(resolved),
-            metadata={"license": LICENSE, "category": "WikiArticle"},
-        )
+        yield _doc(resolved, text)
         count += 1
         if limit and count >= limit:
             return
+
+
+def scrape_titles(titles: Iterable[str], delay: float = DELAY_SECONDS) -> Iterator[Document]:
+    """Scrapes ONLY the given page titles (used by the incremental update). Pages
+    with no extract (deleted/blanked) are skipped — the caller removes their chunks."""
+    for title in titles:
+        resolved, text = _fetch_extract(title)
+        time.sleep(delay)
+        if not text:
+            continue
+        yield _doc(resolved, text)
 
 
 def _iter_titles(limit: int | None) -> Iterator[str]:
@@ -59,7 +73,7 @@ def _iter_titles(limit: int | None) -> Iterator[str]:
         }
         if apcontinue:
             params["apcontinue"] = apcontinue
-        data = _api_get(params)
+        data = api_get(params)
         for p in data["query"]["allpages"]:
             yield p["title"]
             fetched += 1
@@ -73,7 +87,7 @@ def _iter_titles(limit: int | None) -> Iterator[str]:
 
 def _fetch_extract(title: str) -> tuple[str, str]:
     """Returns (resolved title, plain text). Resolves redirects."""
-    data = _api_get({
+    data = api_get({
         "action": "query", "prop": "extracts", "explaintext": "1",
         "exsectionformat": "plain", "redirects": "1", "exlimit": "1",
         "titles": title, "format": "json",
@@ -81,21 +95,3 @@ def _fetch_extract(title: str) -> tuple[str, str]:
     pages = data["query"]["pages"]
     page = next(iter(pages.values()))
     return page.get("title", title), (page.get("extract") or "").strip()
-
-
-def _api_get(params: dict, retries: int = 3) -> dict:
-    url = f"{CONFIG.wiki_api_url}?{urllib.parse.urlencode(params)}"
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    last_err: Exception | None = None
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception as e:  # noqa: BLE001 — retry on transient network errors
-            last_err = e
-            time.sleep(1 + attempt)
-    raise RuntimeError(f"Richiesta API fallita: {url}") from last_err
-
-
-def _page_url(title: str) -> str:
-    return f"https://wiki.eveuniversity.org/{title.replace(' ', '_')}"

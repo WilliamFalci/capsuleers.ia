@@ -43,6 +43,24 @@ catalog model (`repo`/`file` exist on HuggingFace).
 > The index also derives from the EVE University Wiki (CC BY-NC-SA 4.0) → **non-commercial**
 > distribution (see [`THIRD_PARTY.md`](THIRD_PARTY.md)).
 
+### Automated index publishing + auto-update (no app release)
+
+Steps 2–3 are scripted by [`ops/publish-index.sh`](ops/publish-index.sh): it exports the
+flat index from the current Qdrant collection, recomputes sizes/SHA256, bumps
+[`assets-manifest.json`](desktop/src/assets-manifest.json) (`index.version`/`baseUrl`/`files`),
+cuts the `index-<date>` release, and pushes the manifest.
+
+**The app fetches that manifest at launch** (`assets.mjs` `INDEX_MANIFEST_URL`, same pattern
+as `models-catalog.json`) and, if a newer **compatible** index version is published (same
+`embedModel`/`dim`), downloads it in the background and offers a restart — so the knowledge
+base auto-updates on existing installs **without an app release**. The bundled manifest is the
+offline floor; the accepted manifest is persisted in `dataDir/index-manifest.json`.
+
+This pairs with the daily server jobs that keep Qdrant fresh — SDE ([`ops/update.sh`](ops/update.sh))
+and EVE University wiki incremental ([`ops/wiki-update.sh`](ops/wiki-update.sh), via the
+`recentchanges` API). Run `publish-index.sh` on a slow cadence (weekly, or when those jobs
+reported changes): the ~290 MB vector file isn't worth republishing per wiki edit.
+
 ## Releasing the app
 
 1. Update `version` in [`desktop/package.json`](desktop/package.json).

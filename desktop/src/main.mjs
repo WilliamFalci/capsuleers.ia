@@ -8,7 +8,7 @@ import { configurePaths, init, ask, resetConversation, shutdown, listModels, set
 import { localIntel, characterDetail } from "./intel.mjs";
 import { startWatch, stopWatch, isEnabled, scanNow } from "./clipboard-watch.mjs";
 import { statSync } from "node:fs";
-import { loadManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, indexTasks, loadCatalog, installedCatalogIds, modelTask } from "./assets.mjs";
+import { loadManifest, loadEffectiveManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, indexTasks, loadCatalog, installedCatalogIds, modelTask, checkIndexUpdate, persistIndexManifest } from "./assets.mjs";
 import electronUpdater from "electron-updater";
 const { autoUpdater } = electronUpdater;
 
@@ -51,6 +51,11 @@ const MSTR = {
     updMsg: (v) => `La versione ${v} è stata scaricata.`,
     updDetail: "Vuoi riavviare ora per installarla? Puoi anche farlo più tardi: verrà applicata alla prossima chiusura.",
     updLater: "Più tardi", updRestart: "Riavvia e installa",
+    idxStatus: "Aggiorno la knowledge base…",
+    idxTitle: "Dati aggiornati",
+    idxMsg: (v) => `Una nuova knowledge base (${v}) è stata scaricata.`,
+    idxDetail: "Riavvia per usare i dati aggiornati. Verranno comunque applicati al prossimo avvio.",
+    idxLater: "Più tardi", idxRestart: "Riavvia ora",
   },
   en: {
     trayShow: "Show Capsuleers.IA",
@@ -79,6 +84,11 @@ const MSTR = {
     updMsg: (v) => `Version ${v} has been downloaded.`,
     updDetail: "Restart now to install it? You can also do it later: it will be applied on next quit.",
     updLater: "Later", updRestart: "Restart & install",
+    idxStatus: "Updating the knowledge base…",
+    idxTitle: "Data updated",
+    idxMsg: (v) => `A new knowledge base (${v}) has been downloaded.`,
+    idxDetail: "Restart to use the updated data. It will be applied on next launch anyway.",
+    idxLater: "Later", idxRestart: "Restart now",
   },
 };
 const M = () => MSTR[(app.getLocale() || "en").toLowerCase().startsWith("it") ? "it" : "en"];
@@ -289,13 +299,13 @@ async function setupAssetDirs() {
 // Is the setup flow (asset download) needed? Only if packaged and the embedding,
 // index, or a chat model are missing. In dev the assets are in the project → never.
 function setupNeeded() {
-  return !!assetDirs && !assetStatus({ ...assetDirs }).firstRunReady;
+  return !!assetDirs && !assetStatus({ ...assetDirs, manifest: loadEffectiveManifest(assetDirs.dataDir) }).firstRunReady;
 }
 
 // Full first-run info for the renderer: status, bytes still to download for the
 // one-time base (embedding + index), and the model choices from the catalog.
 async function setupInfo() {
-  const manifest = loadManifest();
+  const manifest = loadEffectiveManifest(assetDirs.dataDir);
   const status = assetStatus({ ...assetDirs, manifest });
   let baseBytes = 0;
   if (!status.embeddingReady) baseBytes += manifest.embedding.size;
@@ -347,15 +357,43 @@ function setupAutoUpdate() {
 // (Fitting SDE is no longer here — it's version-pinned inside the eve-fit-engine package.)
 async function refreshDataFiles() {
   if (!assetDirs || setupNeeded()) return;  // first-run setup downloads everything anyway
-  const manifest = loadManifest();
+  const manifest = loadEffectiveManifest(assetDirs.dataDir);
   const sizeNe = (p, size) => { try { return statSync(p).size !== size; } catch { return true; } };
   const stale = indexTasks(manifest, assetDirs.dataDir).filter((t) => sizeNe(t.dest, t.size));
   if (!stale.length) return;
   try {
     win?.webContents.send("status", { k: "index" });
     await downloadTasks(stale);
-    writeIndexMeta(assetDirs.dataDir);
+    writeIndexMeta(assetDirs.dataDir, manifest);
   } catch { /* keep existing files; non-fatal (the fit lookup just stays older) */ }
+}
+
+// Background check (post-boot): is a newer, compatible RAG index published? If so
+// download it, persist the new manifest as the baseline, and offer a restart so the
+// engine reloads the fresh data (it's applied on next launch regardless). The big
+// vector file makes this unfit for a blocking boot step → it runs after the engine
+// is already up. Failures are silent (offline / no release).
+async function checkIndexUpdateInBackground() {
+  if (!assetDirs || setupNeeded()) return;
+  let remote;
+  try {
+    const { available, manifest } = await checkIndexUpdate({ dataDir: assetDirs.dataDir });
+    if (!available) return;
+    remote = manifest;
+    // Silent background download (the big vector file); the dialog below is the only
+    // user-visible part. Persist the new manifest only AFTER all files land, so a
+    // partial download leaves the old baseline intact for next boot.
+    await downloadTasks(indexTasks(remote, assetDirs.dataDir));
+    persistIndexManifest(assetDirs.dataDir, remote);  // new baseline
+    writeIndexMeta(assetDirs.dataDir, remote);
+  } catch { return; }  // partial download → next boot's refreshDataFiles reconciles vs persisted manifest
+  if (!win || !remote) return;
+  const m = M();
+  const { response } = await dialog.showMessageBox(win, {
+    type: "info", title: m.idxTitle, message: m.idxMsg(remote.index.version),
+    detail: m.idxDetail, buttons: [m.idxLater, m.idxRestart], defaultId: 1, cancelId: 0, noLink: true,
+  });
+  if (response === 1) { await shutdown(); shuttingDown = true; app.relaunch(); app.exit(0); }
 }
 
 // Start the RAG engine (models + index) and notify the renderer.
@@ -382,7 +420,7 @@ app.whenReady().then(async () => {
   // Once the window is ready: if assets are missing, show setup; otherwise start the engine.
   win.webContents.once("did-finish-load", async () => {
     if (setupNeeded()) win?.webContents.send("setup:needed", await setupInfo());
-    else { await refreshDataFiles(); startEngine(); }
+    else { await refreshDataFiles(); await startEngine(); checkIndexUpdateInBackground(); }
   });
 
   app.on("activate", () => {

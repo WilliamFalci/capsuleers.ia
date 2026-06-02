@@ -16,9 +16,39 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // launch, no app update). The bundled copy is the offline fallback.
 const CATALOG_URL = "https://raw.githubusercontent.com/WilliamFalci/capsuleers.ia/main/desktop/src/models-catalog.json";
 
-/** Load the index + embedding manifest (bundled next to this module). */
+// Remote index manifest (same file as the bundled one, served from the repo). The
+// ingestion host bumps index.version + files when it republishes the RAG index
+// (ops/publish-index.sh) → existing installs auto-update the data, no app release.
+// The bundled copy is the offline floor; a persisted copy in dataDir is the
+// source of truth once an update has been applied.
+const INDEX_MANIFEST_URL = "https://raw.githubusercontent.com/WilliamFalci/capsuleers.ia/main/desktop/src/assets-manifest.json";
+const PERSISTED_INDEX_MANIFEST = "index-manifest.json";  // in dataDir
+
+/** Load the bundled index + embedding manifest (shipped next to this module). */
 export function loadManifest() {
   return JSON.parse(fs.readFileSync(path.join(HERE, "assets-manifest.json"), "utf-8"));
+}
+
+/** Effective manifest: the bundled one, but with its `index` block overridden by a
+ *  persisted (auto-updated) manifest in dataDir when present. The embedding block
+ *  always comes from the bundle (it never auto-updates). Everything that reasons
+ *  about the INDEX (status, first-run, refresh) should use this, not loadManifest. */
+export function loadEffectiveManifest(dataDir) {
+  const bundled = loadManifest();
+  if (!dataDir) return bundled;
+  try {
+    const persisted = JSON.parse(fs.readFileSync(path.join(dataDir, PERSISTED_INDEX_MANIFEST), "utf-8"));
+    if (persisted?.index?.version && Array.isArray(persisted.index.files)) {
+      return { ...bundled, index: persisted.index };
+    }
+  } catch { /* none yet → bundled */ }
+  return bundled;
+}
+
+/** Persist an accepted index manifest as the new baseline (so a later boot keeps it
+ *  instead of reverting to the older bundled one). */
+export function persistIndexManifest(dataDir, manifest) {
+  fs.writeFileSync(path.join(dataDir, PERSISTED_INDEX_MANIFEST), JSON.stringify({ index: manifest.index }, null, 2));
 }
 
 /** Write the index's compatibility sidecar (version, embedder, dim) next to the
@@ -26,6 +56,43 @@ export function loadManifest() {
 export function writeIndexMeta(dataDir, manifest = loadManifest()) {
   const { version, embedModel, dim } = manifest.index;
   fs.writeFileSync(path.join(dataDir, "index-meta.json"), JSON.stringify({ version, embedModel, dim }, null, 2));
+}
+
+/** Currently-installed index version (from the sidecar), or null if none. */
+export function localIndexVersion(dataDir) {
+  try { return JSON.parse(fs.readFileSync(path.join(dataDir, "index-meta.json"), "utf-8")).version || null; }
+  catch { return null; }
+}
+
+/** Fetch the remote index manifest (5 s timeout). Returns the parsed manifest or null. */
+export async function fetchRemoteManifest({ signal } = {}) {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
+    const res = await fetch(INDEX_MANIFEST_URL, { signal: signal || ctl.signal, headers: { "User-Agent": USER_AGENT } });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const m = await res.json();
+    return m?.index?.version && Array.isArray(m.index?.files) ? m : null;
+  } catch { return null; }
+}
+
+/**
+ * Is a newer, COMPATIBLE index available remotely? Compatible = same embedding model
+ * + dim as the app's bundled embedder (a differently-embedded index would be unusable).
+ * Returns { available, manifest } — manifest is the remote one when available.
+ */
+export async function checkIndexUpdate({ dataDir, signal } = {}) {
+  const bundled = loadManifest();
+  const remote = await fetchRemoteManifest({ signal });
+  if (!remote) return { available: false };
+  const r = remote.index;
+  const compatible = r.embedModel === bundled.index.embedModel && r.dim === bundled.index.dim;
+  const installed = localIndexVersion(dataDir);
+  const effective = loadEffectiveManifest(dataDir).index.version;
+  // Newer than both what's on disk AND the current effective baseline.
+  const newer = r.version !== installed && r.version !== effective;
+  return { available: compatible && newer, manifest: remote };
 }
 
 // ── Model catalog (remote, updatable, with bundled fallback) ────────────────

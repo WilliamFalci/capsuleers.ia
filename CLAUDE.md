@@ -89,7 +89,14 @@ format). Don't hardcode a UA string at a call site — import the constant; chan
 two files only.
 - [`main.mjs`](desktop/src/main.mjs) — Electron main process, tray/mini window, electron-updater
   auto-update, `refreshDataFiles()` (re-downloads index/data files whose size no longer matches
-  [`assets-manifest.json`](desktop/src/assets-manifest.json)).
+  the effective manifest) + `checkIndexUpdateInBackground()` (post-boot: if a newer **compatible**
+  RAG index is published, downloads it + offers a restart).
+- **RAG index auto-update**: [`assets.mjs`](desktop/src/assets.mjs) fetches the index manifest at
+  runtime (`INDEX_MANIFEST_URL`, raw `assets-manifest.json` on `main`) like the model catalog. A
+  newer `index.version` with matching `embedModel`/`dim` is downloaded + persisted to
+  `dataDir/index-manifest.json` (the new baseline; bundled manifest is the offline floor). The
+  server side that republishes the index is [`ops/publish-index.sh`](ops/publish-index.sh); the
+  daily wiki/SDE jobs keep Qdrant fresh. See [`RELEASING.md`](RELEASING.md).
 
 ## Fit analysis (delegated to `eve-fit-engine`)
 
@@ -142,11 +149,15 @@ Imports from `eve-fit-engine/node`: `loadBundledDataset`, `buildAllVSkillProfile
 ## Ingestion (Python data factory)
 
 [`ingestion/capsuleers_ingestion/`](ingestion/capsuleers_ingestion/): `run.py` (CLI), `update.py`
-(daily SDE build-number check + zero-downtime Qdrant alias swap), `sde/*` (per-domain parsers:
-`parse`, `dogma`, `universe`, `industry`, `social`, `facilities`, `sites`, `wormholes`), `wiki/`
-(MediaWiki crawler, rate-limited, preserves CC-BY-SA attribution), `missions/`, `chunk.py`,
+(daily SDE build-number check + zero-downtime Qdrant alias swap), `wiki_update.py` (daily
+**incremental** wiki update — `recentchanges` API watermark in `wiki_state.json` → re-index only
+changed pages in place; `index.delete_by_doc_ids` purges a page's old chunks before re-insert),
+`sde/*` (per-domain parsers: `parse`, `dogma`, `universe`, `industry`, `social`, `facilities`,
+`sites`, `wormholes`), `wiki/` (`api` shared client, `scrape` full+per-title crawler,
+`recentchanges` detector; rate-limited, preserves CC-BY-SA attribution), `missions/`, `chunk.py`,
 `embed.py` (Ollama bge-m3), `index.py` (Qdrant). Embedding cache (`embed_cache.sqlite`) means an
-SDE update only re-embeds changed documents.
+SDE/wiki update only re-embeds changed documents. Timers + the index publish step live in
+[`ops/`](ops/) (`update.sh`, `wiki-update.sh`, `publish-index.sh`).
 
 ## Data sources & licensing
 

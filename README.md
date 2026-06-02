@@ -52,6 +52,9 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   Jita", with the **entry and exit signatures** and jump distance.
 - **Model management** — pick/download/delete chat models from an **updatable catalog**,
   filtered to a sensible VRAM range, with a response-time estimate for your GPU.
+- **Self-updating knowledge base** — the RAG index tracks new EVE patches (SDE) and EVE
+  University wiki edits; when a newer index is published the app downloads it in the
+  background and offers a restart — no reinstall, no app update.
 
 ## Stack
 
