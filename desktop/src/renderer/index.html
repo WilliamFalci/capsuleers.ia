@@ -265,6 +265,8 @@
     .er-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .er-sub { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
     .er-m { font-family: ui-monospace, monospace; font-size: .76rem; color: var(--orange); white-space: nowrap; }
+    .erow .sec { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; padding: .08rem .15rem;
+                 font-family: ui-monospace, monospace; font-size: .68rem; font-weight: 700; border: 1px solid; border-radius: 3px; background: #0e1014; }
     .kill {
       display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
       grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
@@ -1177,6 +1179,31 @@
       return el;
     }
 
+    // Solar-system list (hunts_in): security badge + system + region + kills.
+    const secColor = (s) => s == null ? "#7b8290" : s >= 0.45 ? "#34d399" : s > 0.0 ? "#eab308" : "#fb7185";
+    const secTxt = (s) => s == null ? "?" : (Math.round(Number(s) * 10) / 10).toFixed(1);
+    function sysListEl(c) {
+      const el = document.createElement("div"); el.className = "panel";
+      if (c.entityName) {
+        const h = document.createElement("div"); h.className = "rank-title";
+        h.textContent = `${L.cards.huntingGrounds || ""} · ${c.entityName}`;
+        el.appendChild(h);
+      }
+      const list = document.createElement("div"); list.className = "elist";
+      for (const s of c.items) {
+        const row = document.createElement(s.href ? "a" : "div"); row.className = "erow";
+        if (s.href) { row.href = s.href; row.title = "eve-kill.com"; }
+        const col = secColor(s.security);
+        row.innerHTML = `<span class="sec" style="color:${col};border-color:${col}">${secTxt(s.security)}</span>`
+          + `<span class="er-name">${esc(s.name)}</span>`
+          + `<span class="er-sub">${esc(s.region || "")}</span>`
+          + (s.kills != null ? `<span class="er-m">${nFmt(s.kills)} ${esc(L.cards.kill)}</span>` : "");
+        list.appendChild(row);
+      }
+      el.appendChild(list);
+      return el;
+    }
+
     function renderCards(cards) {
       const wrap = document.createElement("div");
       if (cards.kind === "battles") { wrap.className = "cardgrid"; for (const b of cards.items) wrap.appendChild(battleCardEl(b)); return wrap; }
@@ -1186,6 +1213,7 @@
       else if (cards.kind === "rank") wrap.appendChild(rankEl(cards));
       else if (cards.kind === "pilot") wrap.appendChild(pilotEl(cards));
       else if (cards.kind === "entitylist") wrap.appendChild(entityListEl(cards));
+      else if (cards.kind === "syslist") wrap.appendChild(sysListEl(cards));
       return wrap;
     }
 
@@ -1320,7 +1348,7 @@
           dim: { ship_flown: "Navi più volate", ship_lost: "Navi più perse", system: "Sistemi più attivi", constellation: "Costellazioni più attive", region: "Regioni più attive",
             killed_alliance: "Alleanze più uccise", dies_to_alliance: "Uccisa più spesso da (alleanze)", killed_corporation: "Corp più uccise", dies_to_corporation: "Uccisa più spesso da (corp)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Flotta", blob: "Blob" }, avgFleet: "Flotta media",
-          list: { wingmates: "Compagni di volo", prey: "Prede preferite", hunters: "Cacciatori" } },
+          list: { wingmates: "Compagni di volo", prey: "Prede preferite", hunters: "Cacciatori" }, huntingGrounds: "Sistemi di caccia" },
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1397,7 +1425,7 @@
           dim: { ship_flown: "Top ships flown", ship_lost: "Top ships lost", system: "Most active systems", constellation: "Most active constellations", region: "Most active regions",
             killed_alliance: "Alliances killed most", dies_to_alliance: "Most killed by (alliances)", killed_corporation: "Corps killed most", dies_to_corporation: "Most killed by (corps)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Fleet", blob: "Blob" }, avgFleet: "Avg fleet",
-          list: { wingmates: "Wingmates", prey: "Favourite prey", hunters: "Hunters" } },
+          list: { wingmates: "Wingmates", prey: "Favourite prey", hunters: "Hunters" }, huntingGrounds: "Hunting grounds" },
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,

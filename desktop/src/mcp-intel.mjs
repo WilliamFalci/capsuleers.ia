@@ -230,6 +230,19 @@ function entityListItems(rows) {
   }).filter(Boolean);
 }
 
+// hunts_in → a solar-system list (security badge + system + region + kills), rendered client-side.
+function huntSystems(d) {
+  const arr = Array.isArray(d) ? d : (d?.systems || d?.results || d?.rows || d?.items || []);
+  return arr.slice(0, 12).map((s) => ({
+    id: s.system_id ?? s.id,
+    name: s.system_name || s.name,
+    region: s.region_name || null,
+    security: s.security ?? null,
+    kills: s.kills ?? s.count ?? null,
+    href: s.url || (s.system_id ? `https://eve-kill.com/system/${s.system_id}` : null),
+  })).filter((s) => s.name);
+}
+
 // expensive_losses / entity_kills → the kill-card shape renderKills() expects (ship render +
 // victim portrait/corp logo + system + value + time + eve-kill link). Tolerates both shapes:
 // expensive_losses carries victim_ship; entity_kills nests ship under victim.ship_*. Accepts
@@ -526,7 +539,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("hunts_in", { entity });
-          return d ? block(`sistemi di caccia preferiti di ${entity}`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const items = huntSystems(d);
+          if (!items.length) return block(`sistemi di caccia preferiti di ${entity}`, d);
+          return { ...blockBody(`sistemi di caccia preferiti di ${entity}`, `Sistemi di caccia di ${entity} — vedi la lista sotto.`, d), cards: { kind: "syslist", entityName: entity, items } };
         }
       }
     }
