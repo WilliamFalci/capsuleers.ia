@@ -1,0 +1,10 @@
+[Unit]
+Description=Capsuleers.IA — eve-survival missions incremental update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/Documenti/WORK/Capsuleers.IA/ops/missions-update.sh
+# Full re-fetch of the mission set (content-hash diff); re-embeds only changed pages.
+TimeoutStartSec=3600

@@ -89,6 +89,43 @@ systemctl --user enable --now capsuleers-wiki-update.timer
 > A full wiki rebuild (the source of truth) is still `run --wiki --dump …` →
 > `run --from-dump`; `wiki_update` only keeps the index fresh between rebuilds.
 
+## Missions (eve-survival) + wormhole (Anoikis) auto-update
+
+Same in-place model as the wiki, with detection suited to each source. **Both write
+in place on the live collection** (NOT via the SDE rebuild, which swaps an SDE-only
+collection and would drop wiki/missions).
+
+- **Missions** — eve-survival is a "Wikka" wiki with no reliable change API, so
+  detection is **content-hash** (`missions_state.json` = {doc_id: sha256}). The job
+  re-fetches the mission set, re-indexes only pages whose hash changed, and drops
+  pages that disappeared. Weekly timer (`capsuleers-missions-update.timer`, Sun 12:00)
+  — the check re-fetches every page, and missions change rarely.
+- **Wormhole** — `wormhole.json` is one small file: detection is its **file hash**.
+  On change it re-parses the universe and re-indexes only the affected J-space system
+  Documents (new ones + the previous key-set, so removed effects get cleared). Daily
+  timer (`capsuleers-wormhole-update.timer`, 12:30) — cheap.
+
+```bash
+cd ingestion
+python -m capsuleers_ingestion.missions_update  --check    # exit 1 = changes
+python -m capsuleers_ingestion.wormhole_update   --check
+python -m capsuleers_ingestion.missions_update              # apply
+python -m capsuleers_ingestion.wormhole_update             # apply
+```
+
+Install the timers like the others:
+
+```bash
+for u in sde wiki missions wormhole; do
+  cp ops/capsuleers-$u-update.service ~/.config/systemd/user/ 2>/dev/null
+  cp ops/capsuleers-$u-update.timer   ~/.config/systemd/user/
+done
+systemctl --user daemon-reload
+systemctl --user enable --now capsuleers-missions-update.timer capsuleers-wormhole-update.timer
+```
+
+> Staggered: SDE 11:00 · wiki 11:30 · missions Sun 12:00 · wormhole 12:30.
+
 ## Publishing the desktop index (reaching end-users)
 
 The SDE/wiki jobs above refresh the **server** Qdrant collection. The desktop app

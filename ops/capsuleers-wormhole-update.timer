@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Anoikis wormhole update for Capsuleers.IA
+
+[Timer]
+# Daily 12:30 (cheap: one small JSON + re-index of affected J-space systems only).
+OnCalendar=*-*-* 12:30:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

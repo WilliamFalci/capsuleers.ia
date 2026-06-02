@@ -15,7 +15,7 @@ import html
 import re
 import time
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 from ..config import USER_AGENT
 from ..models import Document
@@ -57,26 +57,51 @@ def _mission_names() -> list[str]:
     return [n for n in names if n not in _SKIP]
 
 
+def mission_names() -> list[str]:
+    """Public: the list of mission page names from the MissionReports index."""
+    return _mission_names()
+
+
+def doc_id(name: str) -> str:
+    """Stable Document id for a mission page name (matches the Document.id below)."""
+    return f"evesurvival:{name}"
+
+
+def _doc(name: str, text: str) -> Document | None:
+    """Builds the mission Document from a page name + scraped content (None if empty)."""
+    if len(text) < 80:  # empty/non-mission page
+        return None
+    # Title = initial part before "Last edited"; the rest is the guide.
+    title = re.split(r"\s+Last edited", text, maxsplit=1)[0].strip()[:120] or name
+    body = re.sub(r"^.*?UTC\s*", "", text, count=1)  # removes "… Last edited … UTC"
+    return Document(
+        id=f"evesurvival:{name}", type="mission", title=title,
+        text=f"{title}\n{body}", source="eve_survival",
+        url=f"{BASE}/?wakka={name}",
+        metadata={"license": LICENSE, "category": "Mission"},
+    )
+
+
+def scrape_named(names: Iterable[str], delay: float = DELAY_SECONDS) -> Iterator[Document]:
+    """Scrapes ONLY the given mission page names (used by the incremental update)."""
+    for name in names:
+        try:
+            text = _content(_get(f"{BASE}/wikka.php?wakka={name}"))
+        except Exception:  # noqa: BLE001 — skip problematic pages
+            continue
+        time.sleep(delay)
+        d = _doc(name, text)
+        if d:
+            yield d
+
+
 def scrape_missions(limit: int | None = None, delay: float = DELAY_SECONDS) -> Iterator[Document]:
     """Iterates the mission guides as Documents (type='mission')."""
     count = 0
     for name in _mission_names():
         if limit and count >= limit:
             return
-        try:
-            text = _content(_get(f"{BASE}/wikka.php?wakka={name}"))
-        except Exception:  # noqa: BLE001 — skip problematic pages
-            continue
-        time.sleep(delay)
-        if len(text) < 80:  # empty/non-mission page
-            continue
-        # Title = initial part before "Last edited"; the rest is the guide.
-        title = re.split(r"\s+Last edited", text, maxsplit=1)[0].strip()[:120] or name
-        body = re.sub(r"^.*?UTC\s*", "", text, count=1)  # removes "… Last edited … UTC"
-        yield Document(
-            id=f"evesurvival:{name}", type="mission", title=title,
-            text=f"{title}\n{body}", source="eve_survival",
-            url=f"{BASE}/?wakka={name}",
-            metadata={"license": LICENSE, "category": "Mission"},
-        )
+        for d in scrape_named([name], delay=delay):
+            yield d
+            count += 1
         count += 1

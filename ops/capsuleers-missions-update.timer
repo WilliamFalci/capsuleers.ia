@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly eve-survival missions update for Capsuleers.IA
+
+[Timer]
+# Weekly (missions change rarely; the check re-fetches every page). Sunday 12:00.
+OnCalendar=Sun *-*-* 12:00:00
+RandomizedDelaySec=3600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

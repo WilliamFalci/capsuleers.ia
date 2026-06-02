@@ -1,0 +1,9 @@
+[Unit]
+Description=Capsuleers.IA — Anoikis wormhole incremental update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/Documenti/WORK/Capsuleers.IA/ops/wormhole-update.sh
+TimeoutStartSec=1800

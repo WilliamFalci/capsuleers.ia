@@ -149,15 +149,22 @@ Imports from `eve-fit-engine/node`: `loadBundledDataset`, `buildAllVSkillProfile
 ## Ingestion (Python data factory)
 
 [`ingestion/capsuleers_ingestion/`](ingestion/capsuleers_ingestion/): `run.py` (CLI), `update.py`
-(daily SDE build-number check + zero-downtime Qdrant alias swap), `wiki_update.py` (daily
-**incremental** wiki update — `recentchanges` API watermark in `wiki_state.json` → re-index only
-changed pages in place; `index.delete_by_doc_ids` purges a page's old chunks before re-insert),
+(daily SDE build-number check + zero-downtime Qdrant alias swap), plus three **incremental**
+auto-updaters that re-index changed docs **in place** on the live collection (NOT via update.py's
+SDE-only swap, which would drop wiki/missions):
+- `wiki_update.py` — `recentchanges` API watermark (`wiki_state.json`) → re-index changed pages.
+- `missions_update.py` — content-hash diff (`missions_state.json`) for eve-survival (Wikka wiki,
+  no API) → re-index changed / drop removed.
+- `wormhole_update.py` — `wormhole.json` file-hash (`wormhole_state.json`) → re-index only the
+  affected J-space system Documents (new ∪ previous key-set, so removed effects get cleared).
+All three purge a doc's old chunks via `index.delete_by_doc_ids` before re-insert.
 `sde/*` (per-domain parsers: `parse`, `dogma`, `universe`, `industry`, `social`, `facilities`,
 `sites`, `wormholes`), `wiki/` (`api` shared client, `scrape` full+per-title crawler,
-`recentchanges` detector; rate-limited, preserves CC-BY-SA attribution), `missions/`, `chunk.py`,
-`embed.py` (Ollama bge-m3), `index.py` (Qdrant). Embedding cache (`embed_cache.sqlite`) means an
-SDE/wiki update only re-embeds changed documents. Timers + the index publish step live in
-[`ops/`](ops/) (`update.sh`, `wiki-update.sh`, `publish-index.sh`).
+`recentchanges` detector; rate-limited, CC-BY-SA), `missions/eve_survival.py` (full + per-name
+`scrape_named`), `chunk.py`, `embed.py` (Ollama bge-m3), `index.py` (Qdrant). Embedding cache
+(`embed_cache.sqlite`) means any update only re-embeds changed documents. Timers + the index
+publish step live in [`ops/`](ops/) (`update.sh`, `wiki-update.sh`, `missions-update.sh`,
+`wormhole-update.sh`, `publish-index.sh`).
 
 ## Data sources & licensing
 
