@@ -679,9 +679,12 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     }
   }
 
-  // 2. Retrieval query. For a fit, retrieve the SHIP doc (role/theorycrafting
-  //    context), NOT the EFT module list. Otherwise: condense the follow-up.
-  const standalone = (isFit && fitShip) ? `${fitShip} nave ruolo bonus` : await condense(question);
+  // 2. Retrieval query. For a fit, retrieve the SHIP doc (role/theorycrafting context), NOT the
+  //    EFT module list. A self-contained query (a killmail/zkill URL or id) is NOT condensed —
+  //    condensing it against the previous turn pollutes the retrieval query (and would graft the
+  //    last turn's ship onto it). Otherwise: condense the follow-up.
+  const selfContained = /https?:\/\/|\bkill\s?mail\b|\b\d{6,}\b/i.test(question);
+  const standalone = (isFit && fitShip) ? `${fitShip} nave ruolo bonus` : (selfContained ? question : await condense(question));
   const { vector } = await embedCtx.getEmbeddingFor(expandQuery(standalone));
   const hits = topK(vector);
 
@@ -725,9 +728,12 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     return { answer: linked, sources: [{ title: "eve-kill.com · disambiguazione", type: "api", url: "https://eve-kill.com/" }] };
   }
 
-  // 4. Context from the retrieved documents.
+  // 4. Context from the retrieved documents — but NOT for self-contained live-data answers
+  //    (killmail analysis, war report, fit specs…): the answer must come only from this turn's
+  //    authoritative block, and stale RAG neighbours (a Muninn doc pulled in by a polluted
+  //    condense) would otherwise make the model graft that ship onto an unrelated killmail.
   let context = "", used = 0;
-  for (const h of hits) {
+  if (!mcp.text) for (const h of hits) {
     const block = `[${h.type}] ${h.title}\n${h.text}`;
     if (used + block.length > MAX_CONTEXT_CHARS) break;
     context += block + "\n\n---\n\n"; used += block.length;
@@ -735,8 +741,12 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
 
   // At most the LAST turn, and only if it's actually relevant to the new question
   // (embedding similarity). Irrelevant history makes the model misread the prompt.
+  // SELF-CONTAINED live-data answers (killmail analysis, war report, battles, a fit's
+  // stats…) must IGNORE the conversation history: the answer comes entirely from this
+  // turn's authoritative block, and a stale previous turn (e.g. a doctrine Muninn) would
+  // otherwise bleed in and make the model hallucinate that ship into an unrelated killmail.
   let histText = "";
-  if (history.length) {
+  if (history.length && !mcp.text && !fitInfo) {
     const prev = history[history.length - 1];
     // Reuse the previous turn's cached query embedding — no extra embed call.
     const related = prev.vec ? cosine(vector, prev.vec) >= HIST_SIM : false;
