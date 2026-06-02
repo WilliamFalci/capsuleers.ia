@@ -55,7 +55,10 @@ change/add/remove models later). Updates are delivered automatically (electron-u
 - **Self-updating knowledge base** — daily jobs track every source (EVE patches/SDE,
   EVE University wiki edits, eve-survival missions, Anoikis wormhole data) and re-index
   only what changed; when a newer index is published the app downloads it in the
-  background and offers a restart — no reinstall, no app update.
+  background and offers a restart — no reinstall, no app update. If the data needs
+  (re)downloading before the assistant can start, a dedicated **data-update** screen
+  shows what's being fetched (in MB) and makes clear your AI model is already installed
+  and won't be re-downloaded — distinct from the full first-run model picker.
 
 ## Stack
 

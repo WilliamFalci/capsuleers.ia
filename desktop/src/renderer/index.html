@@ -1012,6 +1012,10 @@
         setupInclLine: (gb) => `Incluso (una tantum): indice EVE + embedding · ~${gb} GB`,
         setupTotalLine: (gb) => `Da scaricare ora: ~${gb} GB`,
         setupErrCap: "Download non riuscito",
+        setupDataTitle: "AGGIORNAMENTO <b>DATI</b>",
+        setupDataIntro: "È disponibile un aggiornamento dell'indice di conoscenza di EVE. Il modello IA è già installato e <b>non</b> verrà riscaricato: si aggiornano solo i dati.",
+        setupDataStart: "Aggiorna e avvia",
+        setupDataTotal: (size) => `Dati da scaricare: ~${size}`,
         readyLine: (count, gpu) => `ONLINE · ${count} DOC · GPU:${gpu}`,
         lblOverview: "Overview", titleOverview: "Overview del personaggio su capsuleers.app",
         lblPvp: "Dati PvP", titlePvp: "Dati PvP e killboard su eve-kill.com",
@@ -1077,6 +1081,10 @@
         setupInclLine: (gb) => `Included (one-time): EVE index + embedding · ~${gb} GB`,
         setupTotalLine: (gb) => `To download now: ~${gb} GB`,
         setupErrCap: "Download failed",
+        setupDataTitle: "DATA <b>UPDATE</b>",
+        setupDataIntro: "An update to the EVE knowledge index is available. Your AI model is already installed and will <b>not</b> be re-downloaded: only the data is updated.",
+        setupDataStart: "Update & start",
+        setupDataTotal: (size) => `Data to download: ~${size}`,
         readyLine: (count, gpu) => `ONLINE · ${count} DOC · GPU:${gpu}`,
         lblOverview: "Overview", titleOverview: "Character overview on capsuleers.app",
         lblPvp: "PvP data", titlePvp: "PvP data and killboard on eve-kill.com",
@@ -1334,15 +1342,32 @@
       const pctEl = document.getElementById("setup-pct");
       const errEl = document.getElementById("setup-err");
       let baseB = 0, models = [], selected = null;   // baseB = one-time bytes (embedding+index) still to fetch
+      let dataOnly = false;                           // true = model present, only EVE data to (re)download
 
       const GB = (b) => (b / 1e9).toFixed(1);
       const MBs = (b) => (b / 1e6).toFixed(1);
+      // MB under 1 GB, GB above — keeps small data updates readable ("~300 MB" not "~0.3 GB").
+      const fmtSize = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`;
+      // Switch the overlay between first-run (model picker) and data-only (update) presentation.
+      function applyMode() {
+        const titleEl = ov.querySelector("h2");
+        const introEl = ov.querySelector(".setup-intro");
+        titleEl.innerHTML = dataOnly ? L.setupDataTitle : L.setupTitle;
+        introEl.innerHTML = dataOnly ? L.setupDataIntro : L.setupIntro;
+        startBtn.textContent = dataOnly ? L.setupDataStart : L.setupStart;
+        listEl.hidden = dataOnly;   // no model choice when only data updates
+      }
 
       function totalBytes() {
         const m = models.find((x) => x.id === selected);
         return baseB + (m && !m.installed ? m.sizeGB * 1e9 : 0);
       }
       function renderTotal() {
+        if (dataOnly) {
+          inclEl.textContent = "";
+          totalEl.innerHTML = `<b>${L.setupDataTotal(fmtSize(totalBytes()))}</b>`;
+          return;
+        }
         inclEl.textContent = baseB > 0 ? L.setupInclLine(GB(baseB)) : "";
         totalEl.innerHTML = `<b>${L.setupTotalLine(GB(totalBytes()))}</b>`;
       }
@@ -1383,17 +1408,20 @@
       document.getElementById("setup-cancel").addEventListener("click", () => capsuleers.setup.cancel());
 
       capsuleers.setup.onNeeded((data) => {
-        baseB = data.baseBytes || 0; models = data.models || [];
-        selected = (models.find((m) => m.default) || models[0] || {}).id || null;
+        baseB = data.baseBytes || 0; models = data.models || []; dataOnly = !!data.dataOnly;
+        // Data-only: keep the already-installed model so firstRunTasks won't fetch one.
+        selected = dataOnly
+          ? (models.find((m) => m.installed && m.default) || models.find((m) => m.installed) || models[0] || {}).id || null
+          : (models.find((m) => m.default) || models[0] || {}).id || null;
         errEl.hidden = true; prog.hidden = true; actions.hidden = false; setLocked(false);
-        renderModels(); renderTotal();
+        applyMode(); renderModels(); renderTotal();
         ov.hidden = false;
       });
       capsuleers.setup.onProgress((p) => {
         const pct = p.total ? Math.min(100, Math.round(p.received / p.total * 100)) : 0;
         fill.style.width = pct + "%";
         labelEl.textContent = p.label + (p.speed ? ` · ${MBs(p.speed)} MB/s` : "");
-        pctEl.textContent = `${pct}% · ${GB(p.received)}/${GB(p.total)} GB`;
+        pctEl.textContent = `${pct}% · ${fmtSize(p.received)}/${fmtSize(p.total)}`;
       });
       capsuleers.setup.onDone(() => { ov.hidden = true; });
       capsuleers.setup.onError((e) => { if (e.aborted) { prog.hidden = true; actions.hidden = false; setLocked(false); } else showErr(e.message); });

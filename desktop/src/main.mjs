@@ -316,7 +316,11 @@ async function setupInfo() {
     id: m.id, label: m.label, sizeGB: m.sizeGB, paramsB: m.paramsB, quant: m.quant,
     recommended: m.recommended || "", default: !!m.default, installed: installed.has(m.id),
   }));
-  return { needed: !status.firstRunReady, baseBytes, models };  // status is internal
+  // data-only update: a catalog chat model is already installed, only the base
+  // assets (index/embedding) are missing → no model choice needed, show the
+  // lighter "data update" screen instead of the full first-run model picker.
+  const dataOnly = !status.firstRunReady && installed.size > 0 && (!status.indexReady || !status.embeddingReady);
+  return { needed: !status.firstRunReady, dataOnly, baseBytes, models };  // status is internal
 }
 
 // Rough VRAM fit for a not-yet-downloaded model (size + ~1GB context vs free VRAM).

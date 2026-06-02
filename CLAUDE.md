@@ -90,7 +90,11 @@ two files only.
 - [`main.mjs`](desktop/src/main.mjs) — Electron main process, tray/mini window, electron-updater
   auto-update, `refreshDataFiles()` (re-downloads index/data files whose size no longer matches
   the effective manifest) + `checkIndexUpdateInBackground()` (post-boot: if a newer **compatible**
-  RAG index is published, downloads it + offers a restart).
+  RAG index is published, downloads it + offers a restart). `setupInfo()` returns a `dataOnly` flag
+  (a catalog chat model is already installed and only the base assets — index/embedding — are
+  missing): the renderer's `#setup` overlay then switches to a **data-update** presentation (distinct
+  title/intro, no model picker, size shown in MB, "Aggiorna e avvia") instead of the full first-run
+  model picker. Same download/cancel/resume machinery for both modes.
 - **RAG index auto-update**: [`assets.mjs`](desktop/src/assets.mjs) fetches the index manifest at
   runtime (`INDEX_MANIFEST_URL`, raw `assets-manifest.json` on `main`) like the model catalog. A
   newer `index.version` with matching `embedModel`/`dim` is downloaded + persisted to
