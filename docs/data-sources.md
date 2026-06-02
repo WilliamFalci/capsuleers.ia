@@ -13,7 +13,7 @@ indexed in the RAG; **live data** (prices, orders, killmails, activity) → fetc
 | **Anoikis** (anoikis.info) | system effects and wormhole statics (J-space) | semi-static | ✅ indexed |
 | **EVE Ref** (data.everef.net) | global reference prices (adjusted/average) | live | ✅ on-demand lookup (`/price`) |
 | **eve-kill** (api.eve-kill.com) | killboard: character/corp/alliance stats, recent kills/losses, battles, intel | live | ✅ on-demand (`intel.mjs`/`esi.mjs`) |
-| **eve-kill MCP** (mcp.eve-kill.com) | pre-computed analytics: capsuleer dossier (archetypes/wingmates/playstyle), route danger, war report, flies-with/hunts-in/hunted-by/preys-on, find battles, meta/doctrine pulse, expensive losses, killmail story/forensics, dogma stats | live | ✅ on-demand (`mcp.mjs` + `mcp-intel.mjs`); no auth, 20 req/s/IP |
+| **eve-kill MCP** (mcp.eve-kill.com) | pre-computed analytics: capsuleer dossier (archetypes/wingmates/playstyle), route danger, war report, flies-with/hunts-in/hunted-by/preys-on, find battles, meta/doctrine pulse, expensive losses, killmail story/forensics, entity overview/timeline/kills, ships-used, entity-top rankings (ship/system/region/kill-death dims), global/system pulse | live | ✅ on-demand (`mcp.mjs` + `mcp-intel.mjs`); no auth, 20 req/s/IP. Excludes `me_*`, offline-answered `item/ship/system_info`, fitting tools |
 | **EVE-Scout** (api.eve-scout.com) | Thera/Turnur wormhole connections (signatures, ship size, lifetime) | live | ✅ on-demand (`eve-scout.mjs`) |
 | **ESI** (esi.evetech.net) | official: corp/alliance records (CEO, members, founding), per-area system activity (jumps/ship/NPC kills) | live | ✅ on-demand (`esi.mjs`) |
 

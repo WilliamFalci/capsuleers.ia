@@ -133,15 +133,45 @@ async function recentBattles(type, id, limit = 4) {
   return `Ultime battaglie:\n${lines.join("\n")}`;
 }
 
+const _norm = (s) => String(s || "").trim().toLowerCase();
+
 /**
  * Searches for an entity by name and returns an intel summary (or null).
+ * If the query EXACTLY matches (by name OR ticker) more than one entity of DIFFERENT
+ * types (character/corporation/alliance), it does NOT guess: it returns
+ *   { ambiguous: true, name, candidates: [{ type, id, name, ticker }] }
+ * so the caller can ask the user which one they meant (resolved via intelForCandidate).
  * opts: { kills, losses, battles } to include the recent data.
  */
 export async function intelFor(name, opts = {}) {
   let hits;
   try { hits = await search(name); } catch { return null; }
   if (!hits.length) return null;
-  const hit = hits[0];
+  const qn = _norm(name);
+  const exact = hits.filter((h) => parseId(h) && (_norm(h.name) === qn || (h.ticker && _norm(h.ticker) === qn)));
+  const byType = new Map();   // one candidate per entity type (first hit wins)
+  for (const h of exact) { const t = parseId(h).type; if (!byType.has(t)) byType.set(t, h); }
+  if (byType.size >= 2) {
+    const candidates = [...byType.values()].map((h) => {
+      const p = parseId(h);
+      return { type: p.type, id: p.id, name: h.name, ticker: h.ticker || "" };
+    });
+    return { ambiguous: true, name, candidates };
+  }
+  // Unambiguous: prefer the single exact match, else the top hit (covers ticker/partial
+  // matches like "vigaz" → the VIGAZ corporation).
+  return intelForHit(exact[0] || hits[0], opts);
+}
+
+// Resolves the intel for a candidate the user picked during disambiguation.
+export async function intelForCandidate(cand, opts = {}) {
+  if (!cand || cand.id == null || !cand.type) return null;
+  return intelForHit({ id: `${cand.type}_${cand.id}`, name: cand.name, ticker: cand.ticker || "" }, opts);
+}
+
+// Resolves the full intel summary for ONE already-chosen search hit
+// ({ id:"character_123", name, ticker? }). Returns { text, entities, kills } or null.
+async function intelForHit(hit, opts = {}) {
   const pid = parseId(hit);
   if (!pid) return null;
   try {

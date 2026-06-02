@@ -9,7 +9,12 @@
 //  • item_info/ship_info/system_info — ships/items/systems are answered offline from the
 //    RAG index + local SDE; routing them online would break the offline-first stance.
 //  • Fit math stays fully local + offline (fit.mjs → eve-fit-engine, pyfa parity);
-//    no dogma_eval / server-side fit evaluation is wired in.
+//    no dogma_eval / fit_compare / ship_compare (server-side fit/ship evaluation) is wired.
+//  • kills_with — redundant with flies_with (same "who appears on X's killmails" signal).
+//  • compare — head-to-head A-vs-B is already served (more richly) by war_report.
+// Everything else the server exposes that is read-only analytics IS wired below: the
+// pulse tools (global/system), the entity_* family (kills/overview/timeline/top) and
+// ships_used, on top of the original killmail/route/war/doctrine/intel-graph set.
 import { callTool } from "./mcp.mjs";
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
@@ -337,6 +342,122 @@ export async function maybeMcp(question, standalone = question) {
           return d ? block(`efficienza di ${entity} (K:D, ISK ratio, solo rate, fasce orarie)`, d) : EMPTY;
         }
       }
+    }
+
+    // 15) ENTITY OVERVIEW — killboard summary of a character/corp/alliance.
+    {
+      const m = q.match(/\b(?:panoramica|overview|riepilog\w*|scheda)\s+(?:killboard\s+)?(?:di|del|della|dell['’]|of)\s+(.+)/i)
+        || q.match(/\bkillboard\s+(?:di|of)\s+(.+)/i)
+        || q.match(/\b(.+?)['’]s\s+(?:killboard\s+)?overview\b/i);
+      if (m) {
+        const entity = stripLead(clean(m[1]));
+        if (ok(entity)) {
+          const d = await callTool("entity_overview", { entity });
+          return d ? block(`panoramica killboard di ${entity} (kill/perdite, ISK, efficienza, top navi/sistemi)`, d) : EMPTY;
+        }
+      }
+    }
+
+    // 16) ENTITY TIMELINE — activity over time (kills/losses), not membership history.
+    {
+      const m = q.match(/\b(?:timeline|cronologia|andamento)(?:\s+(?:di\s+|dell['’])?attivit\S*)?\s+(?:di|del|della|dell['’]|of|for)\s+(.+)/i)
+        || q.match(/\battivit\S*\s+nel\s+tempo\s+(?:di|del|della|of|for)\s+(.+)/i)
+        || q.match(/\b(?:activity\s+)?timeline\s+(?:of|for)\s+(.+)/i)
+        || q.match(/\b(.+?)['’]s\s+(?:activity\s+)?timeline\b/i);
+      if (m) {
+        const entity = stripLead(clean(m[1]));
+        if (ok(entity)) {
+          const d = await callTool("entity_timeline", { entity });
+          return d ? block(`timeline di attività di ${entity} (kill/perdite nel tempo)`, d) : EMPTY;
+        }
+      }
+    }
+
+    // 17) ENTITY KILLS — recent killmails of an entity ("ultimi kill di X").
+    {
+      const m = q.match(/\b(?:ultim\w*|recent\w*)\s+kill\w*\s+(?:di|del|della|dell['’]|of|by)\s+(.+)/i)
+        || q.match(/\bkill\w*\s+recent\w*\s+(?:di|del|della|of|by)\s+(.+)/i)
+        || q.match(/\brecent\s+kills?\s+(?:of|by)\s+(.+)/i)
+        || q.match(/\b(?:cosa|chi)\s+ha\s+(?:killat\w*|ucciso)\s+(.+?)\s+(?:di\s+recente|ultimamente|recentemente)/i);
+      if (m) {
+        const entity = stripLead(clean(m[1]));
+        if (ok(entity)) {
+          const d = await callTool("entity_kills", { entity });
+          return d ? block(`ultimi kill di ${entity}`, d) : EMPTY;
+        }
+      }
+    }
+
+    // 18) SHIPS USED — hulls an entity flies most (complements doctrine_detect, which is fits).
+    {
+      const m = q.match(/\b(?:che|quali)\s+navi\s+(?:usa|vola|porta|piloti?a|preferisce)\s+(.+)/i)
+        || q.match(/\bnavi\s+(?:usate|volate|preferite|tipiche)\s+(?:da|di)\s+(.+)/i)
+        || q.match(/\b(?:what|which)\s+ships?\s+does\s+(.+?)\s+(?:use|fly|pilot)/i)
+        || q.match(/\bships?\s+(?:used|flown)\s+(?:by|of)\s+(.+)/i);
+      if (m) {
+        const entity = stripLead(clean(m[1]));
+        if (ok(entity)) {
+          const d = await callTool("ships_used", { entity });
+          return d ? block(`navi più usate da ${entity} (ultimi 90gg)`, d) : EMPTY;
+        }
+      }
+    }
+
+    // 19) ENTITY TOP — ranking by a dimension. Works for characters AND alliances/corps
+    //     (unlike the char-only intel-graph tools). The dimension is inferred from the
+    //     question's keyword; bail (fall through) if no dimension is recognised.
+    {
+      const DIM_LABEL = {
+        ship_flown: "navi più volate", ship_lost: "navi più perse",
+        system: "sistemi più attivi", constellation: "costellazioni più attive",
+        region: "regioni più attive", killed_alliance: "alleanze più uccise",
+        dies_to_alliance: "alleanze che lo uccidono di più",
+        killed_corporation: "corp più uccise", dies_to_corporation: "corp che lo uccidono di più",
+      };
+      let dimension = null;
+      if (/\bnavi\b[^.]*\b(?:pers\w*|perdut\w*)|\bship\w*\s+lost|\blost\s+ship/i.test(q)) dimension = "ship_lost";
+      else if (/\bnavi\b|\bship\w*\s+(?:flown|used)|\bhull/i.test(q)) dimension = "ship_flown";
+      else if (/\bcostellazion\w*|constellation/i.test(q)) dimension = "constellation";
+      else if (/\bregion\w*/i.test(q)) dimension = "region";
+      else if (/\bsistem\w*|\bsystem/i.test(q)) dimension = "system";
+      else if (/(?:uccid\w*|kill\w*)[^.]*\balleanz|killed?\s+allianc/i.test(q)) dimension = "killed_alliance";
+      else if (/(?:muore|ucciso|dies?)[^.]*\balleanz|dies?\s+to\s+allianc/i.test(q)) dimension = "dies_to_alliance";
+      const m = dimension && (
+        q.match(/\b(?:top|classific\w*|migliori|preferit\w*|pi[ùu]\s+\w+)\b[^.]*?\b(?:di|del|della|dell['’]|dei|degli|delle|da|of|for|by)\s+(.+)/i)
+        || q.match(/\b(?:top|favou?rite|most)\b[^.]*?\b(?:of|for|by)\s+(.+)/i)
+      );
+      if (m) {
+        const entity = stripLead(clean(m[1]));
+        if (ok(entity)) {
+          const d = await callTool("entity_top", { entity, dimension });
+          return d ? block(`classifica ${DIM_LABEL[dimension]} di ${entity}`, d) : EMPTY;
+        }
+      }
+    }
+
+    // 20) SYSTEM PULSE — recent activity / danger of a single solar system.
+    {
+      const m = q.match(/\b(?:quanto\s+è\s+|com['’]?è\s+|quant['’]?è\s+)?(?:pericolos\w*|attiv\w*|movimentat\w*|cald\w*|tranquill\w*|sicur\w*)\s+(?:il\s+sistema\s+)?([A-Za-z0-9][\w\- ]{1,30})/i)
+        || q.match(/\b(?:attivit\S*|situazione|polso)\s+(?:in|nel\s+sistema|di|del\s+sistema)\s+([A-Za-z0-9][\w\- ]{1,30})/i)
+        || q.match(/\bhow\s+(?:dangerous|active|hot|busy|quiet)\s+is\s+([A-Za-z0-9][\w\- ]{1,30})/i)
+        || q.match(/\b(?:activity|what['’]?s\s+(?:happening|going\s+on))\s+(?:in|at)\s+([A-Za-z0-9][\w\- ]{1,30})/i)
+        || q.match(/\bsystem\s+pulse\s+([A-Za-z0-9][\w\- ]{1,30})/i);
+      if (m) {
+        const system = stripLead(clean(m[1]));
+        if (ok(system)) {
+          const d = await callTool("system_pulse", { system });
+          return d ? block(`polso del sistema ${system} (kill recenti, pericolosità, attività)`, d) : EMPTY;
+        }
+      }
+    }
+
+    // 21) GLOBAL PULSE — cluster-wide activity snapshot (no entity).
+    if (/\b(?:cosa|che\s+cosa|che)\s+(?:succede|sta\s+succedendo|c['’]è)\b[^.]*\b(?:in\s+game|in\s+eve|nel\s+cluster|nello\s+spazio|adesso|ora|ovunque)\b/i.test(q)
+      || /\bpolso\s+(?:globale|del\s+cluster|di\s+eve|di\s+new\s+eden)\b/i.test(q)
+      || /\battivit\S*\s+(?:globale|del\s+cluster|generale)\b/i.test(q)
+      || /\b(?:global\s+pulse|global\s+activity|what['’]?s\s+(?:happening|going\s+on)\s+(?:in\s+eve|globally|right\s+now|across\s+(?:new\s+eden|the\s+cluster)))\b/i.test(q)) {
+      const d = await callTool("global_pulse", {});
+      return d ? block("polso globale di New Eden (attività/kill recenti nel cluster)", d) : EMPTY;
     }
   } catch { /* never break a chat answer over a live-data failure */ }
   return EMPTY;

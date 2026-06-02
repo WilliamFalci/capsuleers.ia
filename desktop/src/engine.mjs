@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { looksLikeFit, parseEft, describeFit, warmFitEngine } from "./fit.mjs";
 import { priceByName, isKnownType, configureDataDir as pricesDataDir } from "./prices.mjs";
-import { intelFor } from "./intel.mjs";
+import { intelFor, intelForCandidate } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
 import { maybeMcp } from "./mcp-intel.mjs";
@@ -118,6 +118,10 @@ let llama, embedCtx, chatModel, index;
 let currentModelFile = null;  // file name (.gguf) of the chat model currently loaded
 let history = [];  // conversation: [{ q, a }] for follow-ups
 let convLang = null;  // language of the current conversation (so follow-ups don't flip)
+// Disambiguation: when "chi è X" matches >1 entity exactly across types, we ask which
+// one and stash the candidates here; the next turn's reply resolves against them.
+let pendingDisambiguation = null;  // { name, candidates, opts, question }
+let forcedIntel = null;            // intel pre-resolved from a disambiguation choice (consumed by maybeIntel)
 
 // In-flight generation: AbortController + active context. Needed to cancel
 // cleanly when the app closes while the model is still answering
@@ -125,7 +129,7 @@ let convLang = null;  // language of the current conversation (so follow-ups don
 let activeAbort = null;
 let activeCtx = null;
 
-export function resetConversation() { history = []; convLang = null; }
+export function resetConversation() { history = []; convLang = null; pendingDisambiguation = null; forcedIntel = null; }
 
 /** File (.gguf) of the chat model currently loaded (null if none). */
 export function currentModel() { return currentModelFile; }
@@ -238,6 +242,9 @@ function intelQuery(q) {
 }
 async function maybeIntel(question) {
   const empty = { text: "", entities: [], kills: [] };
+  // A disambiguation choice was just resolved: serve that intel directly (don't re-search,
+  // which would re-trigger the same ambiguity for the same name).
+  if (forcedIntel) { const r = forcedIntel; forcedIntel = null; return r; }
   const name = intelQuery(question);
   if (!name || name.length < 2) return empty;
   // If the name is a known EVE type (e.g. "Caracal"), it's a game question → leave it to RAG.
@@ -247,7 +254,47 @@ async function maybeIntel(question) {
     losses: /\b(perdit|loss)/i.test(question),
     battles: /\b(battagli|battle)/i.test(question),
   };
-  try { return (await intelFor(name, opts)) || empty; } catch { return empty; }
+  try {
+    const r = await intelFor(name, opts);
+    // Ambiguous across entity types → surface it so ask() can ask the user which one.
+    if (r && r.ambiguous) return { ...empty, ambiguous: { ...r, opts } };
+    return r || empty;
+  } catch { return empty; }
+}
+
+// ── Disambiguation helpers ───────────────────────────────────────────────────
+const _ENT_LABEL = {
+  it: { character: "personaggio", corporation: "corporazione", alliance: "alleanza" },
+  en: { character: "character", corporation: "corporation", alliance: "alliance" },
+};
+// "Which one did you mean?" question listing the exact-match candidates.
+function buildDisambiguationQuestion(amb, lang) {
+  const L = _ENT_LABEL[lang === "it" ? "it" : "en"];
+  const lines = amb.candidates.map((c, i) => {
+    const tick = c.ticker ? ` [${c.ticker}]` : "";
+    return `${i + 1}. ${c.name}${tick} — ${L[c.type] || c.type}`;
+  });
+  return lang === "it"
+    ? `Esistono più entità con il nome «${amb.name}». Quale intendi?\n${lines.join("\n")}\n\nRispondi col numero o col tipo (es. "${L.character}", "${L.corporation}").`
+    : `There are multiple entities named “${amb.name}”. Which one do you mean?\n${lines.join("\n")}\n\nReply with the number or the type (e.g. "${L.character}", "${L.corporation}").`;
+}
+// Interprets a reply to a disambiguation question → the chosen candidate, or null if
+// the reply doesn't clearly pick one (the user moved on to a different question).
+function matchDisambiguationChoice(reply, candidates) {
+  const r = ` ${reply.trim().toLowerCase()} `;
+  const numM = r.match(/\b(?:opzione|option|n\.?|numero|number)?\s*([1-9])\b/);
+  let idx = numM ? Number(numM[1]) : null;
+  if (!idx) {
+    const ord = { primo: 1, prima: 1, secondo: 2, seconda: 2, terzo: 3, terza: 3, first: 1, second: 2, third: 3 };
+    for (const [w, n] of Object.entries(ord)) if (new RegExp(`\\b${w}\\b`).test(r)) { idx = n; break; }
+  }
+  if (idx && candidates[idx - 1]) return candidates[idx - 1];
+  const typeOf = /\b(personagg|pilota|character|char|player|capsuleer)\w*/i.test(r) ? "character"
+    : /\b(corp|corporazion|corporation)\w*/i.test(r) ? "corporation"
+    : /\b(allean|alliance)\w*/i.test(r) ? "alliance" : null;
+  if (typeOf) { const c = candidates.find((x) => x.type === typeOf); if (c) return c; }
+  const byName = candidates.find((x) => r.includes(` ${x.name.toLowerCase()} `) || (x.ticker && r.trim() === x.ticker.toLowerCase()));
+  return byName || null;
 }
 
 // Iteratively strips leading prepositions/articles/entity-types from a string.
@@ -586,6 +633,35 @@ export async function init(onStatus = () => {}) {
 
 /** Answers the question; onToken(text) for streaming. Returns {answer, sources}. */
 export async function ask(question, onToken = () => {}, uiLang = null) {
+  // 0. Disambiguation follow-up: if last turn we asked which entity the user meant,
+  //    try to read this turn as the choice. A matched choice pre-resolves the intel
+  //    (forcedIntel) and rewrites the query to the canonical "chi è <name>" so the rest
+  //    of the pipeline narrates it normally; an unmatched reply just clears the pending
+  //    state and is handled as a fresh question.
+  if (pendingDisambiguation && !looksLikeFit(question)) {
+    // If the reply is itself a fresh "chi è Y / parlami di Y" about a DIFFERENT name,
+    // it's a new question — don't misread a stray "corp"/number in it as the choice.
+    const freshName = intelQuery(question);
+    const cands = pendingDisambiguation.candidates;
+    const isNewIntel = freshName && !cands.some((c) => freshName.toLowerCase().includes(c.name.toLowerCase()));
+    const choice = isNewIntel ? null : matchDisambiguationChoice(question, cands);
+    if (choice) {
+      forcedIntel = await intelForCandidate(choice, pendingDisambiguation.opts || {}).catch(() => null);
+      pendingDisambiguation = null;
+      if (forcedIntel) question = `chi è ${choice.name}`;
+      else {
+        const lang = convLang || detectLang(question, (uiLang === "it" || uiLang === "en") ? uiLang : "en");
+        const msg = lang === "it"
+          ? `Non sono riuscito a recuperare i dati di ${choice.name}. Riprova tra poco.`
+          : `I couldn't fetch data for ${choice.name}. Please try again shortly.`;
+        onToken(msg); history.push({ q: question, a: msg }); if (history.length > 6) history.shift();
+        return { answer: msg, sources: [] };
+      }
+    } else {
+      pendingDisambiguation = null;   // reply didn't pick one → treat as a new question
+    }
+  }
+
   // 1. Pasted EFT fit → analysis (validation + DPS/EHP/tank/cap/navigation/targeting).
   //    Fully offline + authoritative: the stats come from the Pyfa-parity eve-fit-engine
   //    package (bundled SDE), so nothing is sent to any server.
@@ -631,6 +707,19 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     : convLang ? convLang          // a follow-up keeps the conversation's language
     : detectLang(question, sysFb);
   convLang = qLang;
+
+  // 3b. Ambiguous entity ("chi è X" matched >1 entity exactly across types): ask the
+  //     user which one and stash the candidates. No generation this turn — the next
+  //     reply resolves against pendingDisambiguation (Phase 0 above).
+  if (intel.ambiguous) {
+    const msg = buildDisambiguationQuestion(intel.ambiguous, qLang);
+    pendingDisambiguation = { name: intel.ambiguous.name, candidates: intel.ambiguous.candidates, opts: intel.ambiguous.opts, question };
+    onToken(msg);
+    history.push({ q: question, a: msg, vec: vector });
+    if (history.length > 6) history.shift();
+    const linked = await linkify(msg, { lang: qLang, entities: intel.ambiguous.candidates });
+    return { answer: linked, sources: [{ title: "eve-kill.com · disambiguazione", type: "api", url: "https://eve-kill.com/" }] };
+  }
 
   // 4. Context from the retrieved documents.
   let context = "", used = 0;

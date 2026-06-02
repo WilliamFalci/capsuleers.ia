@@ -73,7 +73,10 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
 - [`esi.mjs`](desktop/src/esi.mjs) — official ESI (corp summary, character affiliation, system activity).
 - [`eve-scout.mjs`](desktop/src/eve-scout.mjs) — Thera/Turnur wormhole connections.
 - [`mcp.mjs`](desktop/src/mcp.mjs) + [`mcp-intel.mjs`](desktop/src/mcp-intel.mjs) — eve-kill **MCP**
-  analytics (dossier, flies-with/hunts, safe routes, battles, meta/doctrines, killmail forensics).
+  analytics (dossier, flies-with/hunts/preys/hunted, safe routes, battles, meta/doctrines, killmail
+  forensics, entity overview/timeline/kills, ships-used, entity-top rankings, global/system pulse).
+  Deliberately NOT wired: `me_*` (no pilot context), `item/ship/system_info` (answered offline),
+  fitting (`dogma_eval`/`fit_compare`/`ship_compare`), `kills_with`≈`flies_with`, `compare`≈`war_report`.
 - [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) — Local-chat intel from the clipboard.
 - [`links.mjs`](desktop/src/links.mjs) — `linkify` + `detectLang`.
 

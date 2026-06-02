@@ -37,11 +37,15 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   version-pinned SDE), so nothing is sent to any server.
 - **Live prices** (EVE Ref) — "how much is a Caracal?", total cost of a material list.
 - **Pilot intel** (eve-kill killboard) — "who is `<pilot/corp/alliance>`?" → kills,
-  losses, PvP stats; **leadership** and **system activity** via official ESI.
+  losses, PvP stats; **leadership** and **system activity** via official ESI. When one
+  name matches several entities (e.g. a character *and* a corporation), the app **asks
+  which one you mean** before answering.
 - **PvP analytics** (eve-kill MCP) — relationships and fights from the killboard:
   "who flies with `<pilot>`", "who hunts `<pilot>`", "`<X>` vs `<Y>`", **safe routes**
   ("safe route from Jita to Amarr"), **recent battles**, the **current meta/doctrines**,
-  most expensive kills, and **killmail** story/forensics from a zKillboard link.
+  most expensive kills, **killmail** story/forensics from a zKillboard link, plus
+  **entity overview/timeline/recent-kills**, **ships used**, **top rankings**
+  (favourite hulls/systems/regions, who they kill/die to) and **global/system activity pulse**.
 - **Local intel from the clipboard** — copy the Local in EVE (Ctrl+A, Ctrl+C) and the
   app shows who's around it, flagging the dangerous ones.
 - **Thera/Turnur wormhole connections** (EVE-Scout) — "the Thera connection closest to
