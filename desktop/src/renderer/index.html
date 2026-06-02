@@ -207,6 +207,35 @@
     .gc-ally img { width: 18px; height: 18px; border-radius: 2px; background: #0a0b0d; flex: 0 0 auto; }
     .gc-ally i { color: var(--muted); font-style: normal; font-family: ui-monospace, monospace; font-size: .7rem; }
     .gc-win { display: block; margin-top: .4rem; font-family: ui-monospace, monospace; font-size: .68rem; color: var(--muted); }
+    /* Single-panel cards (entity profile / efficiency stats / rankings). */
+    .cardpanel { margin-top: .7rem; width: 100%; }
+    .panel { background: #0e1014; border: 1px solid var(--line); border-left: 3px solid var(--orange); border-radius: 3px; padding: .8rem .9rem; }
+    .ent-head { display: flex; align-items: center; gap: .7rem; text-decoration: none; color: var(--text); margin-bottom: .7rem; }
+    a.ent-head:hover .eh-name { color: var(--orange); }
+    .eh-img { width: 48px; height: 48px; border-radius: 3px; background: #0a0b0d; flex: 0 0 auto; }
+    .eh-name { font-weight: 700; font-size: 1rem; color: #e6e9ee; }
+    .eh-tk { font-family: ui-monospace, monospace; font-size: .78rem; color: var(--muted); font-weight: 600; }
+    .eh-sub { font-size: .76rem; color: var(--muted); }
+    .gc-stats.wide { grid-template-columns: repeat(4, 1fr); gap: .55rem .3rem; }
+    .ship-strip { margin-top: .7rem; }
+    .ss-title { font-size: .6rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-bottom: .35rem; }
+    .ss-row { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .ss-item { display: flex; align-items: center; gap: .35rem; text-decoration: none; color: #c4c7c5;
+               background: #0a0b0d; border: 1px solid var(--line); border-radius: 3px; padding: .2rem .45rem .2rem .25rem; font-size: .74rem; }
+    .ss-item:hover { border-color: var(--orange-dim); color: var(--text); }
+    .ss-item img { width: 26px; height: 26px; border-radius: 2px; flex: 0 0 auto; }
+    .ss-item i { font-style: normal; font-family: ui-monospace, monospace; font-size: .68rem; color: var(--orange); }
+    .rank-title { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--orange); margin-bottom: .5rem; }
+    .ranklist { display: flex; flex-direction: column; gap: 3px; }
+    .rrow { display: grid; grid-template-columns: 1.4rem 26px 1fr auto auto; align-items: center; gap: .5rem;
+            background: #0a0b0d; border: 1px solid var(--line); border-radius: 2px; padding: .3rem .5rem; }
+    .rrow:has(:not(img)) { }
+    .rr-n { font-family: ui-monospace, monospace; color: var(--muted); font-size: .74rem; text-align: right; }
+    .rrow img { width: 26px; height: 26px; border-radius: 2px; background: #0a0b0d; }
+    .rrow > .rr-name { grid-column: 3; }
+    .rr-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rr-kl { font-size: .7rem; color: #c4c7c5; white-space: nowrap; }
+    .rr-isk { font-family: ui-monospace, monospace; font-size: .74rem; color: var(--orange); white-space: nowrap; }
     .kill {
       display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
       grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
@@ -966,10 +995,100 @@
         + `</div>` + ally + win;
       return el;
     }
+    // Image URL for an entity by type (portrait for characters, logo for corp/alliance, render for ships).
+    const entityImg = (type, id, size = 64) =>
+      type === "character" ? `${IMG}/characters/${id}/portrait?size=${size}`
+      : type === "corporation" ? `${IMG}/corporations/${id}/logo?size=${size}`
+      : type === "alliance" ? `${IMG}/alliances/${id}/logo?size=${size}`
+      : `${IMG}/types/${id}/render?size=${size}`;
+    const statCell = (label, val) => val == null || val === "" ? "" :
+      `<div class="gc-s"><span class="gc-v">${esc(String(val))}</span><span class="gc-l">${esc(label)}</span></div>`;
+    const shipStrip = (title, ships) => !ships?.length ? "" :
+      `<div class="ship-strip"><div class="ss-title">${esc(title)}</div><div class="ss-row">` +
+      ships.map((s) => `<a class="ss-item" href="https://eve-kill.com/item/${s.id}" title="${esc(s.name || "")}">`
+        + `<img src="${entityImg("ship", s.id, 32)}" alt="" /><span>${esc(s.name || "")}</span>`
+        + `<i>${fmtIsk(s.n)}</i></a>`).join("") + `</div></div>`;
+
+    function entityHead(e, sub) {
+      const img = e.id ? `<img class="eh-img" src="${entityImg(e.type, e.id, 64)}" alt="" />` : "";
+      const name = `${esc(e.name || "?")}${e.ticker ? ` <span class="eh-tk">[${esc(e.ticker)}]</span>` : ""}`;
+      const inner = `${img}<div class="eh-meta"><div class="eh-name">${name}</div>${sub ? `<div class="eh-sub">${esc(sub)}</div>` : ""}</div>`;
+      if (e.href) { const a = document.createElement("a"); a.className = "ent-head"; a.href = e.href; a.title = "eve-kill.com"; a.innerHTML = inner; return a; }
+      const d = document.createElement("div"); d.className = "ent-head"; d.innerHTML = inner; return d;
+    }
+
+    function profileEl(c) {
+      const C = L.cards, lf = c.lifetime;
+      const el = document.createElement("div"); el.className = "panel";
+      el.appendChild(entityHead(c.entity, null));
+      const grid = document.createElement("div"); grid.className = "gc-stats wide";
+      grid.innerHTML = statCell(C.kills, lf.kills?.toLocaleString())
+        + statCell(C.losses, lf.losses?.toLocaleString())
+        + statCell(C.iskEff, lf.iskEff != null ? lf.iskEff + "%" : null)
+        + statCell(C.iskDestroyed, lf.iskDestroyed != null ? fmtIsk(lf.iskDestroyed) : null)
+        + statCell(C.iskLost, lf.iskLost != null ? fmtIsk(lf.iskLost) : null)
+        + statCell(C.solo, lf.soloKills?.toLocaleString())
+        + statCell(C.finalBlows, lf.finalBlows?.toLocaleString());
+      el.appendChild(grid);
+      const strips = shipStrip(C.shipsFlown, c.shipsFlown) + shipStrip(C.shipsLost, c.shipsLost);
+      if (strips) { const s = document.createElement("div"); s.innerHTML = strips; el.appendChild(s); }
+      return el;
+    }
+
+    function statsEl(c) {
+      const C = L.cards, t = c.totals;
+      const el = document.createElement("div"); el.className = "panel";
+      el.appendChild(entityHead(c.entity, null));
+      const grid = document.createElement("div"); grid.className = "gc-stats wide";
+      grid.innerHTML = statCell(C.kills, t.kills?.toLocaleString())
+        + statCell(C.losses, t.losses?.toLocaleString())
+        + statCell(C.kd, t.kd != null ? (+t.kd).toFixed(2) : null)
+        + statCell(C.iskRatio, t.iskRatio != null ? (+t.iskRatio).toFixed(2) : null)
+        + statCell(C.iskEff, t.iskEff != null ? t.iskEff + "%" : null)
+        + statCell(C.soloRate, t.soloRate != null ? t.soloRate + "%" : null)
+        + statCell(C.finalBlows, t.finalBlows?.toLocaleString())
+        + statCell(C.gang, t.avgGang != null ? (+t.avgGang).toFixed(1) : null);
+      el.appendChild(grid);
+      if (c.peakHourUtc != null) {
+        const f = document.createElement("div"); f.className = "gc-win";
+        f.textContent = `${C.peak}: ${String(c.peakHourUtc).padStart(2, "0")}:00 UTC`;
+        el.appendChild(f);
+      }
+      return el;
+    }
+
+    function rankEl(c) {
+      const C = L.cards;
+      const el = document.createElement("div"); el.className = "panel";
+      const dimLabel = (C.dim && C.dim[c.dimension]) || c.dimension || "";
+      const head = document.createElement("div"); head.className = "rank-title";
+      head.textContent = `${dimLabel}${c.entity?.name ? " · " + c.entity.name : ""}`;
+      el.appendChild(head);
+      const iconType = /alliance/.test(c.dimension) ? "alliance" : /corporation/.test(c.dimension) ? "corporation"
+        : /^ship_/.test(c.dimension) ? "ship" : null;
+      const list = document.createElement("div"); list.className = "ranklist";
+      for (const r of c.rows) {
+        const row = document.createElement("div"); row.className = "rrow";
+        const img = iconType && r.id ? `<img src="${entityImg(iconType, r.id, 32)}" alt="" />` : "";
+        const kl = [r.kills != null ? `${C.kills} ${(+r.kills).toLocaleString()}` : "",
+                    r.losses != null ? `${C.losses} ${(+r.losses).toLocaleString()}` : ""].filter(Boolean).join(" · ");
+        row.innerHTML = `<span class="rr-n">${r.rank}</span>${img}`
+          + `<span class="rr-name">${esc(r.name || "?")}</span>`
+          + `<span class="rr-kl">${kl}</span>`
+          + (r.isk != null ? `<span class="rr-isk">${fmtIsk(r.isk)}</span>` : "");
+        list.appendChild(row);
+      }
+      el.appendChild(list);
+      return el;
+    }
+
     function renderCards(cards) {
       const wrap = document.createElement("div");
-      wrap.className = "cardgrid";
-      if (cards.kind === "battles") for (const b of cards.items) wrap.appendChild(battleCardEl(b));
+      if (cards.kind === "battles") { wrap.className = "cardgrid"; for (const b of cards.items) wrap.appendChild(battleCardEl(b)); return wrap; }
+      wrap.className = "cardpanel";
+      if (cards.kind === "profile") wrap.appendChild(profileEl(cards));
+      else if (cards.kind === "stats") wrap.appendChild(statsEl(cards));
+      else if (cards.kind === "rank") wrap.appendChild(rankEl(cards));
       return wrap;
     }
 
@@ -1098,7 +1217,11 @@
         openKillmail: "Apri il killmail su eve-kill.com",
         sources: "FONTI //",
         fitCopy: "Copia", fitCopied: "Copiato!",
-        cards: { kill: "Kill", duration: "Durata", isk: "ISK distrutti", iskMin: "ISK/min", alliances: "Alleanze", corps: "Corp", multiParty: "Multi-party" },
+        cards: { kill: "Kill", duration: "Durata", isk: "ISK distrutti", iskMin: "ISK/min", alliances: "Alleanze", corps: "Corp", multiParty: "Multi-party",
+          kills: "Kill", losses: "Perdite", kd: "K/D", iskRatio: "ISK ratio", iskEff: "ISK eff.", soloRate: "Solo %", finalBlows: "Final blow", gang: "Gang medio",
+          iskDestroyed: "ISK distrutti", iskLost: "ISK persi", solo: "Solo kill", peak: "Picco attività", shipsFlown: "Navi più usate", shipsLost: "Navi più perse",
+          dim: { ship_flown: "Navi più volate", ship_lost: "Navi più perse", system: "Sistemi più attivi", constellation: "Costellazioni più attive", region: "Regioni più attive",
+            killed_alliance: "Alleanze più uccise", dies_to_alliance: "Uccisa più spesso da (alleanze)", killed_corporation: "Corp più uccise", dies_to_corporation: "Uccisa più spesso da (corp)" } },
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1169,7 +1292,11 @@
         openKillmail: "Open the killmail on eve-kill.com",
         sources: "SOURCES //",
         fitCopy: "Copy", fitCopied: "Copied!",
-        cards: { kill: "Kills", duration: "Duration", isk: "ISK destroyed", iskMin: "ISK/min", alliances: "Alliances", corps: "Corps", multiParty: "Multi-party" },
+        cards: { kill: "Kills", duration: "Duration", isk: "ISK destroyed", iskMin: "ISK/min", alliances: "Alliances", corps: "Corps", multiParty: "Multi-party",
+          kills: "Kills", losses: "Losses", kd: "K/D", iskRatio: "ISK ratio", iskEff: "ISK eff.", soloRate: "Solo %", finalBlows: "Final blows", gang: "Avg gang",
+          iskDestroyed: "ISK destroyed", iskLost: "ISK lost", solo: "Solo kills", peak: "Peak activity", shipsFlown: "Top ships flown", shipsLost: "Top ships lost",
+          dim: { ship_flown: "Top ships flown", ship_lost: "Top ships lost", system: "Most active systems", constellation: "Most active constellations", region: "Most active regions",
+            killed_alliance: "Alliances killed most", dies_to_alliance: "Most killed by (alliances)", killed_corporation: "Corps killed most", dies_to_corporation: "Most killed by (corps)" } },
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,
@@ -1290,7 +1417,7 @@
         current.appendChild(s);
       }
       if (!res.error && res.kills?.length) current.appendChild(renderKills(res.kills));
-      if (!res.error && res.cards?.items?.length) { current.classList.add("with-cards"); current.appendChild(renderCards(res.cards)); }
+      if (!res.error && res.cards?.kind) { current.classList.add("with-cards"); current.appendChild(renderCards(res.cards)); }
       // Follow the full answer: the streamed-token scroll stops at the (often 1-line) intro,
       // so the markdown re-render + appended sources/kills/cards land below the fold. Scroll
       // to the bottom now, and keep following as the card/portrait images load and grow the

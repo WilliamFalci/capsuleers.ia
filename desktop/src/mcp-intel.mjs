@@ -236,6 +236,48 @@ function killCardItems(arr) {
   }).filter((k) => k.killmailId && k.shipId);
 }
 
+// pilot_efficiency → character stat panel (portrait + K:D / ISK ratio / solo rate / peak hour).
+function efficiencyCard(d) {
+  const c = d?.character, t = d?.totals;
+  if (!c?.id || !t) return null;
+  return {
+    kind: "stats",
+    entity: { id: c.id, type: "character", name: c.name, href: c.url },
+    totals: {
+      kills: t.kills, losses: t.losses, kd: t.kill_loss_ratio, iskRatio: t.isk_ratio,
+      iskEff: t.isk_efficiency_pct, soloRate: t.solo_rate_pct, finalBlows: t.final_blows, avgGang: t.avg_gang_on_kills,
+    },
+    peakHourUtc: d?.activity?.peak_hour_event_count ? d.activity.peak_hour_utc : null,
+  };
+}
+
+// entity_overview → profile card (logo/portrait + lifetime stats + top ships flown/lost icons).
+function overviewCard(d) {
+  const e = d?.entity, lf = d?.lifetime;
+  if (!e?.id || !lf) return null;
+  const ships = (arr) => (arr || []).slice(0, 5).map((s) => ({ id: s.id, name: s.name, n: s.kills ?? s.losses ?? 0 }));
+  return {
+    kind: "profile",
+    entity: { id: e.id, type: e.type, name: e.name, ticker: e.ticker, href: e.url },
+    lifetime: {
+      kills: lf.kills, losses: lf.losses, iskEff: lf.isk_efficiency, iskDestroyed: lf.isk_destroyed,
+      iskLost: lf.isk_lost, soloKills: lf.solo_kills, finalBlows: lf.final_blows,
+    },
+    shipsFlown: ships(d.top_ships_flown),
+    shipsLost: ships(d.top_ships_lost),
+  };
+}
+
+// entity_top → ranking list (rank + per-dimension icon + name + kills/losses + ISK).
+function rankCard(d) {
+  const rows = (d?.rows || []).slice(0, 12).map((r, i) => ({
+    rank: i + 1, id: r.id, name: r.name, kills: r.kills, losses: r.losses, isk: r.isk_destroyed,
+  }));
+  if (!rows.length) return null;
+  const e = d?.entity;
+  return { kind: "rank", entity: e ? { id: e.id, type: e.type, name: e.name } : null, dimension: d.dimension, rows };
+}
+
 // Builds the computed-specs block (+ EFT) for a resolved cluster. Returns the MCP block or null.
 async function specsBlock(target, entityLabel) {
   const res = await doctrineFitStats(target);
@@ -511,7 +553,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("pilot_efficiency", { entity });
-          return d ? block(`efficienza di ${entity} (K:D, ISK ratio, solo rate, fasce orarie)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const card = efficiencyCard(d);
+          if (!card) return block(`efficienza di ${entity} (K:D, ISK ratio, solo rate, fasce orarie)`, d);
+          return { ...blockBody(`efficienza di ${entity}`, `Efficienza di ${entity} — vedi la scheda sotto.`, d), cards: card };
         }
       }
     }
@@ -525,7 +570,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("entity_overview", { entity });
-          return d ? block(`panoramica killboard di ${entity} (kill/perdite, ISK, efficienza, top navi/sistemi)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const card = overviewCard(d);
+          if (!card) return block(`panoramica killboard di ${entity} (kill/perdite, ISK, efficienza, top navi/sistemi)`, d);
+          return { ...blockBody(`panoramica killboard di ${entity}`, `Panoramica di ${entity} — vedi la scheda sotto.`, d), cards: card };
         }
       }
     }
@@ -605,7 +653,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("entity_top", { entity, dimension });
-          return d ? block(`classifica ${DIM_LABEL[dimension]} di ${entity}`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const card = rankCard(d);
+          if (!card) return block(`classifica ${DIM_LABEL[dimension]} di ${entity}`, d);
+          return { ...blockBody(`classifica ${DIM_LABEL[dimension]} di ${entity}`, `Classifica ${DIM_LABEL[dimension]} di ${entity} — vedi la scheda sotto.`, d), cards: card };
         }
       }
     }
