@@ -99,8 +99,9 @@ npm start            # dev (expects models/ and data/ present locally)
 npm run dist:linux   # or dist:win — build an installer
 ```
 
-Developer guides: [`desktop/README.md`](desktop/README.md), release process in
-[`RELEASING.md`](RELEASING.md), knowledge base in [`ingestion/README.md`](ingestion/README.md).
+**Want to contribute?** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) — step-by-step dev setup,
+every internal command, and the conventions. Other guides: [`desktop/README.md`](desktop/README.md),
+release process in [`RELEASING.md`](RELEASING.md), knowledge base in [`ingestion/README.md`](ingestion/README.md).
 
 ## Structure
 
