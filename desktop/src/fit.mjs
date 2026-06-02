@@ -82,7 +82,28 @@ const pct = (n) => Math.round((n || 0) * 100);   // 0..1 resonance/fraction → 
  *  @param {{ship:string, modules:Array}} fit  parsed by parseEft (names for the listing)
  *  @param {string} eftText  the raw EFT string (the engine re-parses + computes from it) */
 export async function describeFit(fit, eftText) {
-  const lines = [`Nave: ${fit.ship}`, "Moduli:"];
+  const lines = [`Nave: ${fit.ship}`];
+
+  // Load the bundled SDE + parse the EFT once: reused for the authoritative hull-CLASS
+  // line below AND the stat computation further down.
+  let dataset, parsed;
+  try {
+    dataset = await loadBundledDataset();
+    parsed = engineParseEft(eftText, dataset);
+  } catch { /* dataset/parse unavailable → degrade gracefully below */ }
+
+  // Authoritative hull class straight from the bundled SDE (groupID→group name,
+  // categoryID→category name). Without it the LLM has only the ship NAME in its
+  // context, and a small local model can hallucinate the role (e.g. report a Marauder
+  // as a "Command Destroyer"). groups/categories are Maps — use .get(), not [].
+  if (dataset && parsed) {
+    const shipType = dataset.getType(parsed.fit.shipTypeID);
+    const grp = shipType && dataset.groups.get(shipType.groupID);
+    const cat = grp && dataset.categories.get(grp.categoryID);
+    if (grp) lines.push(`Classe: ${grp.name}${cat ? ` (${cat.name})` : ""}.`);
+  }
+
+  lines.push("Moduli:");
   for (const m of fit.modules) {
     const qty = m.qty > 1 ? ` ×${m.qty}` : "";
     const charge = m.charge ? ` (carica: ${m.charge})` : "";
@@ -90,9 +111,11 @@ export async function describeFit(fit, eftText) {
   }
 
   let computed, warnings = [], droneInfo = { active: 0, bwUsed: 0 };
+  if (!dataset || !parsed) {
+    lines.push("(Statistiche del fit non calcolabili.)");
+    return lines.join("\n");
+  }
   try {
-    const dataset = await loadBundledDataset();
-    const parsed = engineParseEft(eftText, dataset);
     warnings = parsed.warnings || [];
     const efit = parsed.fit;
     // Promote modules to their natural state (weapons/props → ACTIVE), as the editor
