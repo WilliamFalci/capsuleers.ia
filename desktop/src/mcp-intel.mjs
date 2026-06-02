@@ -192,7 +192,8 @@ function clustersFromDetect(d) {
 
 // find_battles → structured cards (drawn client-side, not narrated as a wall of text).
 function battleCards(d) {
-  return (d?.battles || []).slice(0, 12).map((b) => ({
+  const arr = Array.isArray(d) ? d : (d?.battles || d?.results || d?.data || d?.items || []);
+  return arr.slice(0, 12).map((b) => ({
     id: b.battle_id,
     href: b.url || (b.battle_id ? `https://eve-kill.com/battle/${b.battle_id}` : null),
     system: b.system?.name || null,
@@ -216,9 +217,11 @@ function battleCards(d) {
 
 // expensive_losses / entity_kills → the kill-card shape renderKills() expects (ship render +
 // victim portrait/corp logo + system + value + time + eve-kill link). Tolerates both shapes:
-// expensive_losses carries victim_ship; entity_kills nests ship under victim.ship_*.
-function killCardItems(arr) {
-  return (arr || []).slice(0, 20).map((k) => {
+// expensive_losses carries victim_ship; entity_kills nests ship under victim.ship_*. Accepts
+// either the raw {kills|killmails|results} container or the array itself (shape can vary).
+function killCardItems(input) {
+  const arr = Array.isArray(input) ? input : (input?.kills || input?.killmails || input?.results || input?.data || []);
+  return arr.slice(0, 20).map((k) => {
     const v = k.victim || {};
     const ship = k.victim_ship || { type_id: v.ship_type_id, name: v.ship_name };
     const isChar = v.character_id != null;
@@ -460,7 +463,7 @@ export async function maybeMcp(question, standalone = question) {
     if (/\b(kill\w*\s+(pi[ùu]\s+)?costos\w*|perdit\w*\s+(pi[ùu]\s+)?costos\w*|navi\s+(pi[ùu]\s+)?costos\w*\s+pers\w*|most\s+expensive\s+(kills?|losses?|ships?)|biggest\s+(kills?|losses?)|priciest)\b/i.test(q)) {
       const d = await callTool("expensive_losses", {});
       if (!d) return EMPTY;
-      const kills = killCardItems(d?.kills);
+      const kills = killCardItems(d);
       if (!kills.length) return block("kill più costosi (ultimi 30 giorni)", d);
       return { ...blockBody("kill più costosi (ultimi 30 giorni)", `I ${kills.length} kill più costosi — vedi la lista sotto.`, d), kills };
     }
@@ -604,7 +607,7 @@ export async function maybeMcp(question, standalone = question) {
         if (ok(entity)) {
           const d = await callTool("entity_kills", { entity });
           if (!d) return EMPTY;
-          const kills = killCardItems(d?.kills);
+          const kills = killCardItems(d);
           if (!kills.length) return block(`ultimi kill di ${entity}`, d);
           return { ...blockBody(`ultimi kill di ${entity}`, `Ultimi ${kills.length} kill di ${entity} — vedi la lista sotto.`, d), kills };
         }
