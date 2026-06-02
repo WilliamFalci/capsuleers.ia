@@ -79,7 +79,8 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   fitting (`dogma_eval`/`fit_compare`/`ship_compare`), `kills_with`≈`flies_with`, `compare`≈`war_report`.
   - **Doctrine specs (two-turn flow).** A `doctrine_detect` answer ("which doctrines does corp/alliance
     X use") caches its clusters in module-scope `lastDoctrine` (`{ entity, clusters[] }`). A follow-up
-    like *"specifiche della Muninn"* / *"specs #2"* / *"a quanto spara la Crusader"* resolves the
+    like *"specifiche della Muninn"* / *"il fitting della Muninn"* / *"specs #2"* / *"a quanto spara la
+    Crusader"* resolves the
     cluster (by ordinal or ship name via `resolveCluster`), pulls its example killmail's EFT
     (`killmail_fitting` `format:"eft"`), and computes the fit stats locally via `describeDoctrineFit`
     (max/min damage). The returned block carries `theory:true`, which triggers a theorycrafting

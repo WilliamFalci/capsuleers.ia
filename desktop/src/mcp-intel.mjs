@@ -119,8 +119,13 @@ function stripLead(s) {
   do {
     p = s;
     s = s.replace(/^[\s,:.'’"]+/, "")
-      .replace(/^(?:il|lo|la|i|gli|le|l['’]|the|un|una|uno|a|an)\s+/i, "")
-      .replace(/^(?:pilota|personaggio|player|character|corp(?:orazione|oration)?|alleanza|alliance|giocatore|capsuleer)\s+/i, "");
+      // A framing role word, optionally preceded by ANY article ("the pilot", "il personaggio",
+      // "l'alleanza"): stripping "the"/"a" here is safe because a role word follows it.
+      .replace(/^(?:(?:il|lo|la|i|gli|le|l['’]|the|un|una|uno|a|an)\s+)?(?:pilota|personaggio|player|character|corp(?:orazione|oration)?|alleanza|alliance|giocatore|capsuleer)\s+/i, "")
+      // A BARE leading article. Italian only — NOT English "the"/"a"/"an", which are frequently
+      // the first word of an EVE alliance name ("The Initiative.", "The Bastion", "A Band Apart.").
+      // Stripping them dropped "The Initiative." onto an unrelated corp named "Initiative" (0 clusters).
+      .replace(/^(?:il|lo|la|i|gli|le|l['’]|un|una|uno)\s+/i, "");
   } while (s !== p);
   return s;
 }
@@ -247,9 +252,11 @@ export async function maybeMcp(question, standalone = question) {
 
     // 5-bis) DOCTRINE SPECS — computed stats (DPS max/min, tank, velocità) of ONE doctrine
     //   fit from the previous list. Gated on a prior doctrine_detect; resolves by ordinal or
-    //   ship name. Must precede #5 so "specifiche della <nave>" isn't swallowed as a re-list.
+    //   ship name. Must precede #5 so "specifiche della <nave>" / "il fitting della <nave>" is
+    //   not swallowed as a re-list. Triggers: specifiche/specs/dettagli/scheda, fit/fitting/
+    //   loadout/equipaggiamento, "a quanto spara/quanto tank/dps/danno", "dimmi/mostra … fit".
     if (lastDoctrine?.clusters?.length) {
-      const m = q.match(/\b(?:specifiche|statistiche|specs?|stats?|dettagli|caratteristiche|scheda)\b[\s\S]*?([\w'’\- ]{1,40})$/i)
+      const m = q.match(/\b(?:specifiche|statistiche|specs?|stats?|dettagli|caratteristiche|scheda|fit|fitting|loadout|equipaggiament\w*)\b[\s\S]*?([\w'’\- ]{1,40})$/i)
         || q.match(/\b(?:a\s+quanto\s+spara|quanto\s+(?:tank\w*|dps|danno|fa)|che\s+(?:tank|dps|danno|stat\w*))\b[\s\S]*?([\w'’\- ]{1,40})$/i)
         || q.match(/\b(?:dimmi|dammi|mostra(?:mi)?|fammi\s+vedere|show|tell\s+me)\b[\s\S]*\b(?:fit|dottrina|nave)\b[\s\S]*?([\w'’\- ]{1,40})$/i);
       if (m) {
@@ -287,7 +294,7 @@ export async function maybeMcp(question, standalone = question) {
           lastDoctrine = clusters.length ? { entity, clusters } : null;
           const body = fmtClusters(d, { withFit: true });
           const header = `dottrine/fit dominanti di ${entity} (ultimi 30 giorni)`;
-          const hint = lastDoctrine ? "\n(Per le statistiche di un fit chiedi: «specifiche della <nave>» oppure «specifiche #2».)" : "";
+          const hint = lastDoctrine ? "\n(Per le statistiche di un fit chiedi: «specifiche della <nave>», «fitting della <nave>» oppure «specifiche #2».)" : "";
           return body ? blockBody(header, body + hint, d) : block(`${header} (nessuna dottrina ricorrente rilevata)`, d);
         }
       }
