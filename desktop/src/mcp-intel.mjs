@@ -215,6 +215,21 @@ function battleCards(d) {
   }));
 }
 
+// flies_with / preys_on / hunted_by → a character portrait list (rendered client-side).
+// Each row carries portrait id + name + corp/alliance sub + a metric (shared/total kills).
+function entityListItems(rows) {
+  return (rows || []).slice(0, 15).map((r) => {
+    const id = r.character_id ?? r.id;
+    const name = r.character_name || r.name;
+    if (!id || !name) return null;
+    return {
+      id, type: "character", name,
+      sub: [r.corporation_name, r.alliance_name].filter(Boolean).join(" · "),
+      metric: r.shared_kills ?? r.kills ?? r.count ?? null,
+    };
+  }).filter(Boolean);
+}
+
 // expensive_losses / entity_kills → the kill-card shape renderKills() expects (ship render +
 // victim portrait/corp logo + system + value + time + eve-kill link). Tolerates both shapes:
 // expensive_losses carries victim_ship; entity_kills nests ship under victim.ship_*. Accepts
@@ -493,7 +508,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("preys_on", { entity });
-          return d ? block(`prede preferite di ${entity} (chi uccide più spesso, 90gg)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const items = entityListItems(d.characters || d.preys || d.results);
+          if (!items.length) return block(`prede preferite di ${entity} (chi uccide più spesso, 90gg)`, d);
+          return { ...blockBody(`prede preferite di ${entity}`, `Prede preferite di ${entity} — vedi la lista sotto.`, d), cards: { kind: "entitylist", variant: "prey", entityName: entity, items } };
         }
       }
     }
@@ -524,7 +542,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("hunted_by", { entity });
-          return d ? block(`chi uccide più spesso ${entity} (90gg)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const items = entityListItems(d.characters || d.hunters || d.results);
+          if (!items.length) return block(`chi uccide più spesso ${entity} (90gg)`, d);
+          return { ...blockBody(`chi uccide più spesso ${entity}`, `Chi uccide più spesso ${entity} — vedi la lista sotto.`, d), cards: { kind: "entitylist", variant: "hunters", entityName: entity, items } };
         }
       }
     }
@@ -540,7 +561,10 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1] || m[2]));
         if (ok(entity)) {
           const d = await callTool("flies_with", { entity });
-          return d ? block(`compagni di volo abituali di ${entity} (ultimi 90gg)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const items = entityListItems(d.partners || d.results || d.characters);
+          if (!items.length) return block(`compagni di volo abituali di ${entity} (ultimi 90gg)`, d);
+          return { ...blockBody(`compagni di volo abituali di ${entity}`, `Compagni di volo di ${entity} — vedi la lista sotto.`, d), cards: { kind: "entitylist", variant: "wingmates", entityName: entity, items } };
         }
       }
     }
