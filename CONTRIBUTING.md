@@ -207,6 +207,11 @@ assertions / 23 fixtures, with its own version-pinned SDE bundle). The numbers a
 fully offline. `fit.mjs` only parses module **names** (for prices + the LLM listing) and renders the
 engine's `DerivedStats` into the Italian context block.
 
+`fit.mjs` also exports `describeDoctrineFit(eft)` for the **doctrine specs** flow (a doctrine fit pulled
+from a corp/alliance killmail via the eve-kill MCP — see CLAUDE.md). It reuses the same engine math but
+contrasts the offense at the highest-damage vs longest-range ammo (`pickAmmoExtremes()`), surfacing the
+missile flight range from `offense.missileRange` (requires **eve-fit-engine ≥ 0.1.4**).
+
 **Three traps to respect (regressions are easy here):**
 
 1. **`eve-fit-engine/data/**` must stay `asarUnpack`'d** in [`electron-builder.yml`](desktop/electron-builder.yml).

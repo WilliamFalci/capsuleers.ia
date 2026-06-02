@@ -16,6 +16,7 @@
 // pulse tools (global/system), the entity_* family (kills/overview/timeline/top) and
 // ships_used, on top of the original killmail/route/war/doctrine/intel-graph set.
 import { callTool } from "./mcp.mjs";
+import { describeDoctrineFit } from "./fit.mjs";
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -130,6 +131,47 @@ function cleanEntity(s) {
 }
 const ok = (s) => s && s.length >= 2 && s.length <= 60;
 
+// ── Doctrine memory (for "specs of #2 / the Muninn" follow-ups) ───────────────
+// Normalised clusters from the last successful doctrine_detect. Lets the next turn resolve
+// a doctrine by ordinal or ship name and compute its fit stats, without re-querying the MCP.
+let lastDoctrine = null;   // { entity, clusters:[{ name, signature, killmail_id, losses }] }
+export function resetDoctrineMemory() { lastDoctrine = null; }
+
+// killmail_fitting (format:"eft") returns { ..., eft }. Pull a valid EFT block out of it.
+function extractEft(d) {
+  const s = typeof d === "string" ? d : (d?.eft || d?.text || d?.fitting);
+  return typeof s === "string" && /^\s*\[.+,/.test(s) ? s : null;
+}
+
+const ORD_WORDS = { prim: 1, second: 2, terz: 3, quart: 4, quint: 5, sest: 6, settim: 7,
+  first: 1, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7 };
+// Resolves a doctrine reference — "#2", "la seconda", or a ship name/signature — against the
+// remembered clusters. Returns the matched cluster or null.
+function resolveCluster(needle, clusters) {
+  if (!clusters?.length) return null;
+  const n = (needle || "").toLowerCase().trim().replace(/^(?:la|lo|il|the|dottrina|doctrine|nave|fit)\s+/i, "");
+  if (!n) return null;
+  const numM = n.match(/^[#n]?[°.]?\s*(\d{1,2})$/);            // "#2", "2", "n.2"
+  if (numM) return clusters[Number(numM[1]) - 1] || null;
+  for (const [stem, idx] of Object.entries(ORD_WORDS)) if (n.startsWith(stem)) return clusters[idx - 1] || null;
+  let best = null;                                             // ship-name / signature substring
+  for (const c of clusters) {
+    const name = (c.name || "").toLowerCase();
+    if (name && (n.includes(name) || name.includes(n))) return c;
+    if (!best && n.length >= 3 && (c.signature || "").toLowerCase().includes(n)) best = c;
+  }
+  return best;
+}
+
+// Pulls the cluster's example killmail fit and computes its Pyfa-parity stats (with max/min
+// damage spread). Returns the Italian stats block, or null if it can't be fetched/computed.
+async function doctrineFitStats(cluster) {
+  if (!cluster?.killmail_id) return null;
+  const ft = await callTool("killmail_fitting", { killmail_id: cluster.killmail_id, format: "eft" });
+  const eft = extractEft(ft);
+  return eft ? await describeDoctrineFit(eft) : null;
+}
+
 // ── Dispatcher ───────────────────────────────────────────────────────────────
 
 const EMPTY = { text: "", entities: [], source: null, sourceTitle: null };
@@ -203,10 +245,30 @@ export async function maybeMcp(question, standalone = question) {
       return d ? block(focus ? `grafo coalizioni attorno a ${focus}` : "grafo coalizioni (alleati/nemici dalle battaglie)", d) : EMPTY;
     }
 
+    // 5-bis) DOCTRINE SPECS — computed stats (DPS max/min, tank, velocità) of ONE doctrine
+    //   fit from the previous list. Gated on a prior doctrine_detect; resolves by ordinal or
+    //   ship name. Must precede #5 so "specifiche della <nave>" isn't swallowed as a re-list.
+    if (lastDoctrine?.clusters?.length) {
+      const m = q.match(/\b(?:specifiche|statistiche|specs?|stats?|dettagli|caratteristiche|scheda)\b[\s\S]*?([\w'’\- ]{1,40})$/i)
+        || q.match(/\b(?:a\s+quanto\s+spara|quanto\s+(?:tank\w*|dps|danno|fa)|che\s+(?:tank|dps|danno|stat\w*))\b[\s\S]*?([\w'’\- ]{1,40})$/i)
+        || q.match(/\b(?:dimmi|dammi|mostra(?:mi)?|fammi\s+vedere|show|tell\s+me)\b[\s\S]*\b(?:fit|dottrina|nave)\b[\s\S]*?([\w'’\- ]{1,40})$/i);
+      if (m) {
+        const target = resolveCluster(stripLead(clean(m[1])), lastDoctrine.clusters);
+        if (target) {
+          const body = await doctrineFitStats(target);
+          if (body) {
+            const header = `specifiche dottrina ${target.name} di ${lastDoctrine.entity} (All V, parità pyfa, danno min/max per munizione)`;
+            return { ...blockBody(header, body, target), theory: true };
+          }
+        }
+      }
+    }
+
     // 5) DOCTRINE DETECT — dominant fit doctrines of an entity.
     {
       const m = q.match(/\bdottrin\w*\s+(?:di|del|della|dei|usate?\s+d[ai])\s+(.+)/i)
         || q.match(/\bdoctrines?\s+(?:of|used\s+by)\s+(.+)/i)
+        || q.match(/\bche\s+dottrin\w*\s+(?:usa|vola|porta|schiera|monta)\w*\s+(.+)/i)
         || q.match(/\bche\s+fit\s+(?:usa|vola|porta)\s+(.+)/i)
         || q.match(/\bfit\s+(?:usati?|preferiti?|tipici?)\s+(?:da|di|of)\s+(.+)/i)
         || q.match(/\bwhat\s+(?:fits?|doctrines?)\s+does\s+(.+?)\s+(?:use|fly)/i);
@@ -215,9 +277,18 @@ export async function maybeMcp(question, standalone = question) {
         if (ok(entity)) {
           const d = await callTool("doctrine_detect", { entity });
           if (!d) return EMPTY;
+          // Remember the clusters so the next turn can compute a specific fit's stats.
+          const clusters = (d.clusters || []).map((c) => ({
+            name: c.ship?.name || `nave ${c.ship?.type_id ?? "?"}`,
+            signature: c.signature || "",
+            killmail_id: c.example_killmail?.killmail_id,
+            losses: c.losses,
+          })).filter((c) => c.killmail_id);
+          lastDoctrine = clusters.length ? { entity, clusters } : null;
           const body = fmtClusters(d, { withFit: true });
           const header = `dottrine/fit dominanti di ${entity} (ultimi 30 giorni)`;
-          return body ? blockBody(header, body, d) : block(`${header} (nessuna dottrina ricorrente rilevata)`, d);
+          const hint = lastDoctrine ? "\n(Per le statistiche di un fit chiedi: «specifiche della <nave>» oppure «specifiche #2».)" : "";
+          return body ? blockBody(header, body + hint, d) : block(`${header} (nessuna dottrina ricorrente rilevata)`, d);
         }
       }
     }

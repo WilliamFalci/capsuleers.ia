@@ -9,7 +9,7 @@ import { priceByName, isKnownType, configureDataDir as pricesDataDir } from "./p
 import { intelFor, intelForCandidate } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
-import { maybeMcp } from "./mcp-intel.mjs";
+import { maybeMcp, resetDoctrineMemory } from "./mcp-intel.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -129,7 +129,7 @@ let forcedIntel = null;            // intel pre-resolved from a disambiguation c
 let activeAbort = null;
 let activeCtx = null;
 
-export function resetConversation() { history = []; convLang = null; pendingDisambiguation = null; forcedIntel = null; }
+export function resetConversation() { history = []; convLang = null; pendingDisambiguation = null; forcedIntel = null; resetDoctrineMemory(); }
 
 /** File (.gguf) of the chat model currently loaded (null if none). */
 export function currentModel() { return currentModelFile; }
@@ -757,6 +757,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     { on: !!fitInfo,
       it: `\nQuesto è un FIT. Struttura la risposta così, basandoti sull'ANALISI DEL FIT qui sopra (dati autorevoli, NON reinventarli). La CLASSE della nave è indicata nell'analisi: usala ESATTAMENTE, non dedurre né inventare la classe/ruolo dello scafo.\n1) **DPS**, **Tank (EHP)**, **Velocità**, **Cap stability** (riporta i numeri).\n2) **Bonus nave**: se il fit sfrutta o no i bonus della nave, e perché.\n3) **Theorycrafting**: a cosa serve questa nave con questo fit (ruolo, PvP/PvE, punti di forza e debolezze, come si usa). Usa la tua conoscenza della nave, coerente con la CLASSE indicata.`,
       en: `\nThis is a FIT. Structure the answer like this, based on the FIT ANALYSIS above (authoritative data, do NOT make it up). The ship's CLASS is given in the analysis: use it EXACTLY, do NOT infer or invent the hull's class/role.\n1) **DPS**, **Tank (EHP)**, **Speed**, **Cap stability** (report the numbers).\n2) **Ship bonuses**: whether the fit uses the ship's bonuses, and why.\n3) **Theorycrafting**: what this ship is for with this fit (role, PvP/PvE, strengths and weaknesses, how to fly it). Use your knowledge of the ship, consistent with the CLASS given.` },
+    { on: !!mcp.theory,
+      it: `\nIl CONTESTO contiene le STATISTICHE di un fit di dottrina (eve-fit-engine, parità pyfa). Basati SOLO su quei numeri (NON reinventarli). Struttura la risposta così:\n1) **Danno**: riporta DPS e gittata sia con la carica ad alto danno sia con quella a lunga gittata (il «massimo e minimo»).\n2) **Tank (EHP)**, **Velocità**, **Cap** (riporta i numeri).\n3) **Theorycrafting**: ruolo tattico nella dottrina, range/velocità d'ingaggio ideale, punti di forza e debolezze, come si combatte. Ricorda che la rilevazione si basa sulle PERDITE degli ultimi 30 giorni.`,
+      en: `\nThe CONTEXT contains the STATS of a doctrine fit (eve-fit-engine, pyfa parity). Rely ONLY on those numbers (do NOT invent them). Structure the answer like this:\n1) **Damage**: report DPS and range for both the high-damage and the long-range ammo (the "max and min").\n2) **Tank (EHP)**, **Speed**, **Cap** (report the numbers).\n3) **Theorycrafting**: tactical role in the doctrine, ideal engagement range/speed, strengths and weaknesses, how to fight it. Note the detection is based on the last 30 days of LOSSES.` },
   ];
   const directiveText = directives.filter((d) => d.on).map((d) => (qLang === "it" ? d.it : d.en)).join("");
   const userMsg = `${histText}CONTESTO:\n`
