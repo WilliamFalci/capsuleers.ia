@@ -758,8 +758,8 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
       it: `\nQuesto è un FIT. Struttura la risposta così, basandoti sull'ANALISI DEL FIT qui sopra (dati autorevoli, NON reinventarli). La CLASSE della nave è indicata nell'analisi: usala ESATTAMENTE, non dedurre né inventare la classe/ruolo dello scafo.\n1) **DPS**, **Tank (EHP)**, **Velocità**, **Cap stability** (riporta i numeri).\n2) **Bonus nave**: se il fit sfrutta o no i bonus della nave, e perché.\n3) **Theorycrafting**: a cosa serve questa nave con questo fit (ruolo, PvP/PvE, punti di forza e debolezze, come si usa). Usa la tua conoscenza della nave, coerente con la CLASSE indicata.`,
       en: `\nThis is a FIT. Structure the answer like this, based on the FIT ANALYSIS above (authoritative data, do NOT make it up). The ship's CLASS is given in the analysis: use it EXACTLY, do NOT infer or invent the hull's class/role.\n1) **DPS**, **Tank (EHP)**, **Speed**, **Cap stability** (report the numbers).\n2) **Ship bonuses**: whether the fit uses the ship's bonuses, and why.\n3) **Theorycrafting**: what this ship is for with this fit (role, PvP/PvE, strengths and weaknesses, how to fly it). Use your knowledge of the ship, consistent with the CLASS given.` },
     { on: !!mcp.theory,
-      it: `\nIl CONTESTO contiene le STATISTICHE di un fit di dottrina (eve-fit-engine, parità pyfa). Basati SOLO su quei numeri (NON reinventarli). Struttura la risposta così:\n1) **Danno**: riporta DPS e gittata sia con la carica ad alto danno sia con quella a lunga gittata (il «massimo e minimo»).\n2) **Tank (EHP)**, **Velocità**, **Cap** (riporta i numeri).\n3) **Theorycrafting**: ruolo tattico nella dottrina, range/velocità d'ingaggio ideale, punti di forza e debolezze, come si combatte. Ricorda che la rilevazione si basa sulle PERDITE degli ultimi 30 giorni.\nNON riscrivere il fitting in formato EFT: il blocco EFT completo viene allegato automaticamente in fondo alla risposta.`,
-      en: `\nThe CONTEXT contains the STATS of a doctrine fit (eve-fit-engine, pyfa parity). Rely ONLY on those numbers (do NOT invent them). Structure the answer like this:\n1) **Damage**: report DPS and range for both the high-damage and the long-range ammo (the "max and min").\n2) **Tank (EHP)**, **Speed**, **Cap** (report the numbers).\n3) **Theorycrafting**: tactical role in the doctrine, ideal engagement range/speed, strengths and weaknesses, how to fight it. Note the detection is based on the last 30 days of LOSSES.\nDo NOT rewrite the fit in EFT format: the full EFT block is appended automatically at the end of the answer.` },
+      it: `\nIl CONTESTO contiene le STATISTICHE di un fit di dottrina (eve-fit-engine, parità pyfa). Basati SOLO su quei numeri (NON reinventarli). Struttura la risposta così:\n1) **Danno**: riporta DPS e gittata sia con la carica ad alto danno sia con quella a lunga gittata (il «massimo e minimo»).\n2) **Tank (EHP)**, **Velocità**, **Cap** (riporta i numeri).\n3) **Theorycrafting**: ruolo tattico nella dottrina, range/velocità d'ingaggio ideale, punti di forza e debolezze, come si combatte. Ricorda che la rilevazione si basa sulle PERDITE degli ultimi 30 giorni.\nNON elencare i moduli e NON produrre alcun blocco di codice: il fit completo viene mostrato automaticamente sotto la tua risposta. Fermati dopo il punto 3.`,
+      en: `\nThe CONTEXT contains the STATS of a doctrine fit (eve-fit-engine, pyfa parity). Rely ONLY on those numbers (do NOT invent them). Structure the answer like this:\n1) **Damage**: report DPS and range for both the high-damage and the long-range ammo (the "max and min").\n2) **Tank (EHP)**, **Speed**, **Cap** (report the numbers).\n3) **Theorycrafting**: tactical role in the doctrine, ideal engagement range/speed, strengths and weaknesses, how to fight it. Note the detection is based on the last 30 days of LOSSES.\nDo NOT list the modules and do NOT output any code block: the full fit is shown automatically below your answer. Stop after point 3.` },
   ];
   const directiveText = directives.filter((d) => d.on).map((d) => (qLang === "it" ? d.it : d.en)).join("");
   const userMsg = `${histText}CONTESTO:\n`
@@ -796,11 +796,18 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   }
 
   // 5b. Doctrine-fit specs carry the verbatim example EFT (straight from the killmail).
-  //     Append it as a copy/paste-able code block AFTER generation: deterministic (not the
-  //     small model, which could corrupt module names) and kept OUT of linkify so the fence
-  //     stays pristine. Streamed live, stored in history, appended to the linked answer below.
+  //     We attach it ourselves as a copy/paste-able code block AFTER generation:
+  //     deterministic (not the small model, which corrupts module names + links) and kept
+  //     OUT of linkify so the fence stays pristine. The small model often ALSO emits its own
+  //     EFT/module code block despite the directive — strip any model-produced fence (and an
+  //     immediately-preceding "…EFT/fit…" heading) so only our single authoritative block
+  //     remains. Streamed live, stored in history, appended to the linked answer below.
   let eftBlock = "";
   if (mcp.eft && !aborted) {
+    answer = answer
+      .replace(/(?:^|\n)[ \t]*[*_#> ]*[^\n]*\b(?:EFT|fit(?:ting)?)\b[^\n]*\n+\s*```[\s\S]*?```/gi, "")
+      .replace(/```[\s\S]*?```/g, "")        // any remaining model-emitted fence
+      .replace(/\n{3,}/g, "\n\n").trimEnd();
     const label = qLang === "it" ? "Fit EFT (dal killmail d'esempio)" : "EFT fit (from the example killmail)";
     eftBlock = `\n\n**${label}:**\n\`\`\`\n${String(mcp.eft).trim()}\n\`\`\`\n`;
     onToken(eftBlock);

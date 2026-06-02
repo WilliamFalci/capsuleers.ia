@@ -180,6 +180,25 @@ async function doctrineFitStats(cluster) {
   return body ? { body, eft } : null;
 }
 
+// Normalises a doctrine_detect result into the slim cluster shape we cache in lastDoctrine.
+function clustersFromDetect(d) {
+  return (d?.clusters || []).map((c) => ({
+    name: c.ship?.name || `nave ${c.ship?.type_id ?? "?"}`,
+    signature: c.signature || "",
+    killmail_id: c.example_killmail?.killmail_id,
+    losses: c.losses,
+  })).filter((c) => c.killmail_id);
+}
+
+// Builds the computed-specs block (+ EFT) for a resolved cluster. Returns the MCP block or null.
+async function specsBlock(target, entityLabel) {
+  const res = await doctrineFitStats(target);
+  if (!res?.body) return null;
+  const header = `specifiche dottrina ${target.name} di ${entityLabel} (All V, parità pyfa, danno min/max per munizione)`;
+  // theory → theorycrafting directive; eft → engine appends the verbatim fit block.
+  return { ...blockBody(header, res.body, target), theory: true, eft: res.eft };
+}
+
 // ── Dispatcher ───────────────────────────────────────────────────────────────
 
 const EMPTY = { text: "", entities: [], source: null, sourceTitle: null };
@@ -253,24 +272,46 @@ export async function maybeMcp(question, standalone = question) {
       return d ? block(focus ? `grafo coalizioni attorno a ${focus}` : "grafo coalizioni (alleati/nemici dalle battaglie)", d) : EMPTY;
     }
 
-    // 5-bis) DOCTRINE SPECS — computed stats (DPS max/min, tank, velocità) of ONE doctrine
-    //   fit from the previous list. Gated on a prior doctrine_detect; resolves by ordinal or
-    //   ship name. Must precede #5 so "specifiche della <nave>" / "il fitting della <nave>" is
-    //   not swallowed as a re-list. Triggers: specifiche/specs/dettagli/scheda, fit/fitting/
-    //   loadout/equipaggiamento, "a quanto spara/quanto tank/dps/danno", "dimmi/mostra … fit".
-    if (lastDoctrine?.clusters?.length) {
-      const m = q.match(/\b(?:specifiche|statistiche|specs?|stats?|dettagli|caratteristiche|scheda|fit|fitting|loadout|equipaggiament\w*)\b[\s\S]*?([\w'’\- ]{1,40})$/i)
-        || q.match(/\b(?:a\s+quanto\s+spara|quanto\s+(?:tank\w*|dps|danno|fa)|che\s+(?:tank|dps|danno|stat\w*))\b[\s\S]*?([\w'’\- ]{1,40})$/i)
-        || q.match(/\b(?:dimmi|dammi|mostra(?:mi)?|fammi\s+vedere|show|tell\s+me)\b[\s\S]*\b(?:fit|dottrina|nave)\b[\s\S]*?([\w'’\- ]{1,40})$/i);
-      if (m) {
-        const target = resolveCluster(stripLead(clean(m[1])), lastDoctrine.clusters);
-        if (target) {
-          const res = await doctrineFitStats(target);
-          if (res?.body) {
-            const header = `specifiche dottrina ${target.name} di ${lastDoctrine.entity} (All V, parità pyfa, danno min/max per munizione)`;
-            // theory → theorycrafting directive; eft → engine appends the verbatim fit block.
-            return { ...blockBody(header, res.body, target), theory: true, eft: res.eft };
+    // 5-bis) DOCTRINE SPECS — computed stats (DPS max/min, tank, velocità) + EFT of ONE
+    //   doctrine fit. Two ways in (must precede #5 so it isn't swallowed as a re-list):
+    //   (a) ONE-SHOT: "fitting della <nave> di <entità>" → fetch THAT entity's doctrines,
+    //       resolve the ship — works even with no/other cached list (the cross-entity case).
+    //   (b) FOLLOW-UP: after a doctrine list, "fitting della <nave>" / "specifiche #2".
+    //   Triggers: specifiche/specs/dettagli/scheda, fit/fitting/loadout/equipaggiamento,
+    //   "a quanto spara/quanto tank/dps/danno", "dimmi/mostra … fit".
+    {
+      const SPEC_TRIG = "specifiche|statistiche|specs?|stats?|dettagli|caratteristiche|scheda|fit|fitting|loadout|equipaggiament\\w*";
+      // (a) "<trigger> [di dottrina] <nave> di/dei/del <entità>" — ship + explicit entity.
+      const mOne = q.match(new RegExp(
+        `\\b(?:${SPEC_TRIG})\\b(?:\\s+(?:di|della?|del)\\s+dottrin\\w*)?\\s+(?:della?|dei|degli|delle|del|di)?\\s*` +
+        `([\\w'’\\- ]+?)\\s+(?:di|del|della|dei|degli|delle|of)\\s+([\\w'’.\\- ]{2,40})\\s*$`, "i"));
+      if (mOne) {
+        const ship = stripLead(clean(mOne[1]));
+        const entity = stripLead(clean(mOne[2]));
+        if (ok(ship) && ok(entity)) {
+          // Reuse the cached list if it's the same entity, else fetch this entity's doctrines.
+          let clusters = null, label = null;
+          const want = entity.toLowerCase().replace(/\.$/, "");
+          if (lastDoctrine?.clusters?.length && lastDoctrine.entity.toLowerCase().includes(want)) {
+            clusters = lastDoctrine.clusters; label = lastDoctrine.entity;
+          } else {
+            const cl = clustersFromDetect(await callTool("doctrine_detect", { entity }));
+            if (cl.length) { clusters = cl; label = entity; lastDoctrine = { entity, clusters: cl }; }
           }
+          if (clusters) {
+            const target = resolveCluster(ship, clusters);
+            if (target) { const b = await specsBlock(target, label); if (b) return b; }
+          }
+        }
+      }
+      // (b) follow-up against the remembered list (ordinal or ship name, no entity in the query).
+      if (lastDoctrine?.clusters?.length) {
+        const m = q.match(new RegExp(`\\b(?:${SPEC_TRIG})\\b[\\s\\S]*?([\\w'’\\- ]{1,40})$`, "i"))
+          || q.match(/\b(?:a\s+quanto\s+spara|quanto\s+(?:tank\w*|dps|danno|fa)|che\s+(?:tank|dps|danno|stat\w*))\b[\s\S]*?([\w'’\- ]{1,40})$/i)
+          || q.match(/\b(?:dimmi|dammi|mostra(?:mi)?|fammi\s+vedere|show|tell\s+me)\b[\s\S]*\b(?:fit|dottrina|nave)\b[\s\S]*?([\w'’\- ]{1,40})$/i);
+        if (m) {
+          const target = resolveCluster(stripLead(clean(m[1])), lastDoctrine.clusters);
+          if (target) { const b = await specsBlock(target, lastDoctrine.entity); if (b) return b; }
         }
       }
     }
@@ -289,12 +330,7 @@ export async function maybeMcp(question, standalone = question) {
           const d = await callTool("doctrine_detect", { entity });
           if (!d) return EMPTY;
           // Remember the clusters so the next turn can compute a specific fit's stats.
-          const clusters = (d.clusters || []).map((c) => ({
-            name: c.ship?.name || `nave ${c.ship?.type_id ?? "?"}`,
-            signature: c.signature || "",
-            killmail_id: c.example_killmail?.killmail_id,
-            losses: c.losses,
-          })).filter((c) => c.killmail_id);
+          const clusters = clustersFromDetect(d);
           lastDoctrine = clusters.length ? { entity, clusters } : null;
           const body = fmtClusters(d, { withFit: true });
           const header = `dottrine/fit dominanti di ${entity} (ultimi 30 giorni)`;
