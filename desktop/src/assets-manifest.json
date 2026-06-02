@@ -1,19 +1,29 @@
 {
   "schemaVersion": 1,
-  "_note": "Bundled manifest for the FIXED on-demand assets: the RAG index (hosted on the GitHub release index-<version>) and the embedding model (bge-m3). size in bytes, sha256 authoritative. Chat models are NOT here — they live in the updatable models-catalog.json (size/SHA256 resolved live from HuggingFace).",
-
+  "_note": "Bundled manifest for the FIXED on-demand assets: the RAG index (hosted on the GitHub release index-<version>) and the embedding model (bge-m3). size in bytes, sha256 authoritative. Chat models are NOT here \u2014 they live in the updatable models-catalog.json (size/SHA256 resolved live from HuggingFace).",
   "index": {
-    "version": "2026.05.31",
+    "version": "2026.06.02",
     "embedModel": "bge-m3",
     "dim": 1024,
-    "baseUrl": "https://github.com/WilliamFalci/capsuleers.ia/releases/download/index-2026.05.31",
+    "baseUrl": "https://github.com/WilliamFalci/capsuleers.ia/releases/download/index-2026.06.02",
     "files": [
-      { "name": "index.vec",        "size": 289370112, "sha256": "cffa84f02ab03c908c0365cf72faa6f92e3b7a9b2ed7bf14c869c53265bf9391" },
-      { "name": "index.meta.jsonl", "size": 39515310,  "sha256": "b86c35df32cb1bbfb7501ce1feddc8b409029751e38e5828259cc130697f4cf8" },
-      { "name": "names_index.json", "size": 1115152,   "sha256": "6cc8936138586472fc6fa8204f03675660f31c647d113cb3636a923b3312e47c" }
+      {
+        "name": "index.vec",
+        "size": 294535168,
+        "sha256": "f3fb45aa14b21e3ec5a8faf4ea357cd7870ec899572d8b10570a9be4387cc5cb"
+      },
+      {
+        "name": "index.meta.jsonl",
+        "size": 42773435,
+        "sha256": "ac02fe21105fcdc84217ce983c15e2fc645e6d293d5d5692779e31b5eb00ad2b"
+      },
+      {
+        "name": "names_index.json",
+        "size": 1115226,
+        "sha256": "56611f3b47baf40365cabd7f5105f1094c9123beea370e3551a7f1fb3b9fa0d3"
+      }
     ]
   },
-
   "embedding": {
     "id": "bge-m3",
     "filename": "bge-m3-Q8_0.gguf",
