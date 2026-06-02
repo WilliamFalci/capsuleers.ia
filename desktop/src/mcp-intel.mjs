@@ -230,6 +230,51 @@ function entityListItems(rows) {
   }).filter(Boolean);
 }
 
+// war_report → a head-to-head "versus" recap card (two sides with logos + scoreboard + ISK share).
+function versusCard(d) {
+  const t = d?.totals;
+  if (!d?.a?.id || !d?.b?.id || !t) return null;
+  const sys = (d.top_contested_systems || []).slice(0, 6)
+    .map((s) => ({ name: s.system_name || s.name, region: s.region_name || null, kills: s.kills ?? s.count ?? null }))
+    .filter((s) => s.name);
+  return {
+    kind: "versus",
+    a: { id: d.a.id, type: d.a.type, name: d.a.name, kills: t.a_kills_b, isk: t.a_isk_destroyed },
+    b: { id: d.b.id, type: d.b.type, name: d.b.name, kills: t.b_kills_a, isk: t.b_isk_destroyed },
+    totalKills: t.total_kills, totalIsk: t.total_isk, leader: t.leader, iskShareA: t.a_isk_share,
+    systems: sys,
+  };
+}
+
+// battle_report → a team recap card (per-team scoreboard + member alliance/corp logos + winner).
+function battleReportCard(d) {
+  const teams = d?.teams || [];
+  if (!d?.battle_id || teams.length < 2) return null;
+  const maxIsk = Math.max(...teams.map((t) => Number(t.total_isk_destroyed) || 0));
+  const mapTeams = teams.map((t) => ({
+    won: (Number(t.total_isk_destroyed) || 0) === maxIsk && maxIsk > 0,
+    kills: t.total_kills, losses: t.total_losses, isk: t.total_isk_destroyed,
+    members: (t.members || []).slice(0, 8).map((m) => {
+      const allianceId = m.alliance_id, corpId = m.corporation_id;
+      return {
+        type: allianceId ? "alliance" : "corporation",
+        id: allianceId || corpId,
+        name: m.alliance_name || m.corporation_name || "?",
+        ticker: m.alliance_ticker || m.corporation_ticker || null,
+        corps: m.corporation_count ?? null,
+        kills: m.kills, isk: m.isk_destroyed,
+      };
+    }).filter((m) => m.id),
+  }));
+  return {
+    kind: "battlecard",
+    id: d.battle_id, href: d.url || `https://eve-kill.com/battle/${d.battle_id}`,
+    system: d.system?.name || null, region: d.system?.region_name || null, security: d.system?.security ?? null,
+    durationMin: d.duration_minutes ?? null, totalKills: d.kill_count ?? null, totalIsk: d.total_isk_destroyed ?? null,
+    teams: mapTeams,
+  };
+}
+
 // hunts_in → a solar-system list (security badge + system + region + kills), rendered client-side.
 function huntSystems(d) {
   const arr = Array.isArray(d) ? d : (d?.systems || d?.results || d?.rows || d?.items || []);
@@ -377,7 +422,10 @@ export async function maybeMcp(question, standalone = question) {
         const a = cleanEntity(m[1]), b = cleanEntity(m[2]);
         if (ok(a) && ok(b)) {
           const d = await callTool("war_report", { a, b });
-          return d ? block(`scontro testa a testa ${a} vs ${b} (kill per direzione, timeline ISK, sistemi contesi, battaglie)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const card = versusCard(d);
+          if (!card) return block(`scontro testa a testa ${a} vs ${b} (kill per direzione, timeline ISK, sistemi contesi, battaglie)`, d);
+          return { ...blockBody(`scontro ${a} vs ${b}`, `Scontro ${a} vs ${b} — vedi il recap sotto.`, d), cards: card };
         }
       }
     }
@@ -474,7 +522,11 @@ export async function maybeMcp(question, standalone = question) {
       const bid = q.match(/\b(?:battle\s*report|report\s+battagli\w*|battagli\w*|battle)\b[^.\d]*?#?(\d{3,})/i);
       if (bid && /\b(report|battle|battagli)/i.test(q)) {
         const d = await callTool("battle_report", { battle_id: Number(bid[1]) });
-        if (d) return block(`battle report #${bid[1]}`, d);
+        if (d) {
+          const card = battleReportCard(d);
+          if (card) return { ...blockBody(`battle report #${bid[1]}`, `Report battaglia #${bid[1]} — vedi il recap sotto.`, d), cards: card };
+          return block(`battle report #${bid[1]}`, d);
+        }
       }
       if (/\b(ultime?\s+battagli\w*|battagli\w*\s+(?:recenti|più\s+grandi|grosse)|recent\s+battles?|biggest\s+battles?|latest\s+battles?|grandi\s+battagli\w*)\b/i.test(q)) {
         const recent = /\b(recenti|recent|latest|ultime)\b/i.test(q);

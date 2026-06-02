@@ -267,6 +267,42 @@
     .er-m { font-family: ui-monospace, monospace; font-size: .76rem; color: var(--orange); white-space: nowrap; }
     .erow .sec { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; padding: .08rem .15rem;
                  font-family: ui-monospace, monospace; font-size: .68rem; font-weight: 700; border: 1px solid; border-radius: 3px; background: #0e1014; }
+    /* Versus recap (war_report). */
+    .vs-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .6rem; margin-bottom: .7rem; }
+    .vs-side { display: flex; align-items: center; gap: .5rem; text-decoration: none; color: var(--text); min-width: 0; }
+    .vs-head .vs-side:last-child { flex-direction: row-reverse; text-align: right; }
+    .vs-side img { width: 44px; height: 44px; border-radius: 3px; background: #0a0b0d; flex: 0 0 auto; }
+    .vs-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vs-side.win .vs-name { color: var(--orange); }
+    .vs-mid { font-family: ui-monospace, monospace; font-weight: 700; color: var(--muted); font-size: .8rem; }
+    .vs-score { display: grid; grid-template-columns: 1fr auto 1fr; gap: .3rem .6rem; align-items: center; }
+    .vs-a, .vs-b { font-family: ui-monospace, monospace; font-weight: 700; font-size: .92rem; color: #e6e9ee; }
+    .vs-b { text-align: right; }
+    .vs-l { font-size: .6rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); text-align: center; }
+    .vs-bar { display: flex; height: 8px; border-radius: 3px; overflow: hidden; background: #1a1d22; margin-top: .7rem; }
+    .vs-bar i { display: block; height: 100%; }
+    .vs-barlbl { display: flex; justify-content: space-between; margin-top: .25rem; font-size: .66rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    .vs-sys { margin-top: .7rem; }
+    .syschip { display: inline-flex; align-items: center; gap: .3rem; background: #0a0b0d; border: 1px solid var(--line); border-radius: 3px;
+               padding: .12rem .4rem; margin: 0 .3rem .3rem 0; font-size: .72rem; color: #c4c7c5; }
+    .syschip i { font-style: normal; font-family: ui-monospace, monospace; font-size: .66rem; color: var(--orange); }
+    /* Battle report (per-team recap). */
+    .bt-title { display: block; text-decoration: none; }
+    a.bt-title:hover { color: #ffb066; }
+    .bt-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .6rem; }
+    .bt-team { background: #0a0b0d; border: 1px solid var(--line); border-radius: 3px; padding: .55rem .65rem; }
+    .bt-team.win { border-left: 3px solid #34d399; }
+    .bt-team.lose { border-left: 3px solid #fb7185; }
+    .bt-h { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .5rem; }
+    .bt-badge { font-size: .62rem; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; padding: .08rem .35rem; border-radius: 2px; }
+    .bt-team.win .bt-badge { background: #34d399; color: #04150d; }
+    .bt-team.lose .bt-badge { background: #fb7185; color: #2a0810; }
+    .bt-stat { font-family: ui-monospace, monospace; font-size: .72rem; color: var(--muted); }
+    .bt-members { display: flex; flex-direction: column; gap: 3px; }
+    .bt-m { display: flex; align-items: center; gap: .4rem; text-decoration: none; color: #c4c7c5; font-size: .76rem; }
+    .bt-m:hover { color: var(--text); }
+    .bt-m img { width: 24px; height: 24px; border-radius: 2px; background: #0a0b0d; flex: 0 0 auto; }
+    .bt-m i { font-style: normal; font-family: ui-monospace, monospace; font-size: .66rem; color: var(--muted); }
     .kill {
       display: grid; align-items: center; gap: .5rem; text-decoration: none; color: var(--text);
       grid-template-columns: 30px minmax(90px, 1fr) 26px minmax(80px, 1fr) auto auto auto;
@@ -1204,6 +1240,60 @@
       return el;
     }
 
+    // war_report → head-to-head recap: two sides with logos + scoreboard + ISK-share bar + contested systems.
+    function versusEl(c) {
+      const C = L.cards;
+      const el = document.createElement("div"); el.className = "panel";
+      const side = (s, won) => `<a class="vs-side${won ? " win" : ""}" href="${s.id ? `https://eve-kill.com/${s.type}/${s.id}` : "#"}" title="eve-kill.com">`
+        + `<img src="${entityImg(s.type, s.id, 64)}" alt="" /><span class="vs-name">${esc(s.name)}</span></a>`;
+      const head = document.createElement("div"); head.className = "vs-head";
+      head.innerHTML = side(c.a, c.leader === "a") + `<span class="vs-mid">VS</span>` + side(c.b, c.leader === "b");
+      el.appendChild(head);
+      const score = document.createElement("div"); score.className = "vs-score";
+      const row = (a, lbl, b) => `<div class="vs-a">${esc(String(a))}</div><div class="vs-l">${esc(lbl)}</div><div class="vs-b">${esc(String(b))}</div>`;
+      score.innerHTML = row((+c.a.kills || 0).toLocaleString(), C.kills, (+c.b.kills || 0).toLocaleString())
+        + row(fmtIsk(c.a.isk || 0), C.iskDestroyed, fmtIsk(c.b.isk || 0));
+      el.appendChild(score);
+      if (c.iskShareA != null) {
+        const a = Math.max(0, Math.min(100, c.iskShareA)), b = 100 - a;
+        const bar = document.createElement("div");
+        bar.innerHTML = `<div class="vs-bar"><i style="width:${a}%;background:#f97316"></i><i style="width:${b}%;background:#38bdf8"></i></div>`
+          + `<div class="vs-barlbl"><span>${a}%</span><span>${esc(C.iskShare)}</span><span>${(Math.round(b * 10) / 10)}%</span></div>`;
+        el.appendChild(bar);
+      }
+      if (c.systems?.length) {
+        const s = document.createElement("div"); s.className = "vs-sys";
+        s.innerHTML = `<div class="ss-title">${esc(C.contested)}</div><div class="ss-row">`
+          + c.systems.map((x) => `<span class="syschip">${esc(x.name)}${x.kills != null ? ` <i>${nFmt(x.kills)}</i>` : ""}</span>`).join("") + `</div>`;
+        el.appendChild(s);
+      }
+      return el;
+    }
+
+    // battle_report → per-team recap: winner/loser badge + team scoreboard + member alliance/corp logos.
+    function battleReportEl(c) {
+      const C = L.cards;
+      const el = document.createElement("div"); el.className = "panel";
+      const meta = [c.system, c.region, c.durationMin != null ? c.durationMin + "m" : null,
+        c.totalKills != null ? c.totalKills + " " + C.kills : null, c.totalIsk != null ? fmtIsk(c.totalIsk) : null].filter(Boolean).join(" · ");
+      const head = document.createElement(c.href ? "a" : "div"); head.className = "rank-title bt-title";
+      if (c.href) { head.href = c.href; head.title = "eve-kill.com"; }
+      head.textContent = `#${c.id} · ${meta}`;
+      el.appendChild(head);
+      const teams = document.createElement("div"); teams.className = "bt-teams";
+      for (const t of c.teams) {
+        const tb = document.createElement("div"); tb.className = "bt-team " + (t.won ? "win" : "lose");
+        const members = (t.members || []).map((m) => `<a class="bt-m" href="https://eve-kill.com/${m.type}/${m.id}" title="${esc(m.name)}">`
+          + `<img src="${entityImg(m.type, m.id, 32)}" alt="" /><span>${esc(m.name)}${m.ticker ? ` <i>[${esc(m.ticker)}]</i>` : ""}</span></a>`).join("");
+        tb.innerHTML = `<div class="bt-h"><span class="bt-badge">${esc(t.won ? C.battle.won : C.battle.lost)}</span>`
+          + `<span class="bt-stat">${(+t.kills || 0).toLocaleString()} ${esc(C.kills)} · ${fmtIsk(t.isk || 0)}</span></div>`
+          + `<div class="bt-members">${members}</div>`;
+        teams.appendChild(tb);
+      }
+      el.appendChild(teams);
+      return el;
+    }
+
     function renderCards(cards) {
       const wrap = document.createElement("div");
       if (cards.kind === "battles") { wrap.className = "cardgrid"; for (const b of cards.items) wrap.appendChild(battleCardEl(b)); return wrap; }
@@ -1214,6 +1304,8 @@
       else if (cards.kind === "pilot") wrap.appendChild(pilotEl(cards));
       else if (cards.kind === "entitylist") wrap.appendChild(entityListEl(cards));
       else if (cards.kind === "syslist") wrap.appendChild(sysListEl(cards));
+      else if (cards.kind === "versus") wrap.appendChild(versusEl(cards));
+      else if (cards.kind === "battlecard") wrap.appendChild(battleReportEl(cards));
       return wrap;
     }
 
@@ -1348,7 +1440,8 @@
           dim: { ship_flown: "Navi più volate", ship_lost: "Navi più perse", system: "Sistemi più attivi", constellation: "Costellazioni più attive", region: "Regioni più attive",
             killed_alliance: "Alleanze più uccise", dies_to_alliance: "Uccisa più spesso da (alleanze)", killed_corporation: "Corp più uccise", dies_to_corporation: "Uccisa più spesso da (corp)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Flotta", blob: "Blob" }, avgFleet: "Flotta media",
-          list: { wingmates: "Compagni di volo", prey: "Prede preferite", hunters: "Cacciatori" }, huntingGrounds: "Sistemi di caccia" },
+          list: { wingmates: "Compagni di volo", prey: "Prede preferite", hunters: "Cacciatori" }, huntingGrounds: "Sistemi di caccia",
+          iskShare: "Quota ISK", contested: "Sistemi contesi", battle: { won: "Vittorioso", lost: "Sconfitto" } },
         computing: "Calcolo le stime…",
         allLayers: (n) => `tutti i ${n} layer in GPU`,
         someLayers: (g, t) => `solo ${g}/${t} layer in GPU`,
@@ -1425,7 +1518,8 @@
           dim: { ship_flown: "Top ships flown", ship_lost: "Top ships lost", system: "Most active systems", constellation: "Most active constellations", region: "Most active regions",
             killed_alliance: "Alliances killed most", dies_to_alliance: "Most killed by (alliances)", killed_corporation: "Corps killed most", dies_to_corporation: "Most killed by (corps)" },
           ps: { solo: "Solo", small: "Small gang", mid: "Mid gang", fleet: "Fleet", blob: "Blob" }, avgFleet: "Avg fleet",
-          list: { wingmates: "Wingmates", prey: "Favourite prey", hunters: "Hunters" }, huntingGrounds: "Hunting grounds" },
+          list: { wingmates: "Wingmates", prey: "Favourite prey", hunters: "Hunters" }, huntingGrounds: "Hunting grounds",
+          iskShare: "ISK share", contested: "Contested systems", battle: { won: "Winner", lost: "Defeated" } },
         computing: "Computing estimates…",
         allLayers: (n) => `all ${n} layers in GPU`,
         someLayers: (g, t) => `only ${g}/${t} layers in GPU`,
