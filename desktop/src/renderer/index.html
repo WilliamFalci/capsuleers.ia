@@ -109,6 +109,7 @@
                    font-size: 1.25rem; margin-top: .6rem; }
     .about-title b { color: var(--orange); }
     .about-sub { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+    .about-version { font-family: ui-monospace, monospace; font-size: .72rem; letter-spacing: .12em; color: var(--orange); margin-top: .4rem; }
     .about-powered { margin: .9rem 0 1.1rem; font-family: ui-monospace, monospace;
                      font-size: .8rem; letter-spacing: .08em; color: var(--muted); }
     .about-powered a { color: var(--orange); text-decoration: none; font-weight: 700; }
@@ -783,6 +784,7 @@
       <img class="about-logo" src="../../assets/icon-256.png" alt="" />
       <div class="about-title">CAPSULEERS<b>.IA</b></div>
       <div class="about-sub" data-i18n="aboutSub">Assistente locale per EVE Online</div>
+      <div class="about-version" id="about-version"></div>
       <div class="about-powered">
         <span data-i18n="aboutPowered">powered by</span> <a href="https://capsuleers.app" target="_blank" rel="noopener">capsuleers.app</a>
       </div>
@@ -951,6 +953,8 @@
 
     // Info page
     const about = document.getElementById("about");
+    // Show the running app version so "old vs new build" is distinguishable at a glance.
+    capsuleers.appVersion().then((v) => { if (v) document.getElementById("about-version").textContent = "v" + v; }).catch(() => {});
     document.getElementById("wc-info").addEventListener("click", () => about.hidden = false);
     document.getElementById("about-close").addEventListener("click", () => about.hidden = true);
     about.addEventListener("click", (e) => { if (e.target === about) about.hidden = true; });

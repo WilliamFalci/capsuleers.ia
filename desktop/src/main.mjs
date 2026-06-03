@@ -577,6 +577,7 @@ ipcMain.on("win:set-min-width", (_e, w) => {
 });
 ipcMain.on("reset", () => resetConversation());                // new conversation
 ipcMain.handle("clipboard:write", (_e, text) => { clipboard.writeText(String(text ?? "")); return true; });
+ipcMain.handle("app:version", () => app.getVersion());          // shown in the About panel
 
 // Full data wipe: remove EVERYTHING this app wrote to disk (downloaded models, RAG
 // index, Electron caches, settings) plus the electron-updater download cache, then

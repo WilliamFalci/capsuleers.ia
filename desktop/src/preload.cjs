@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("capsuleers", {
   ask: (question) => ipcRenderer.invoke("ask", question),
   reset: () => ipcRenderer.send("reset"),
+  // Running app version (app.getVersion()) — shown in the About panel.
+  appVersion: () => ipcRenderer.invoke("app:version"),
   // Models: list with performance estimate (given the free VRAM), and hot-swap.
   models: {
     list: () => ipcRenderer.invoke("models:list"),
