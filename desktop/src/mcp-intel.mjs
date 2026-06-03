@@ -460,8 +460,10 @@ export async function maybeMcp(question, standalone = question) {
           const d = await callTool("war_report", { a, b });
           if (!d) return EMPTY;
           const card = versusCard(d);
-          if (!card) return block(`scontro testa a testa ${a} vs ${b} (kill per direzione, timeline ISK, sistemi contesi, battaglie)`, d);
-          return { ...blockBody(`scontro ${a} vs ${b}`, `Scontro ${a} vs ${b} — vedi il recap sotto.`, d), cards: card };
+          // Rich textual recap (full-data narration) AND the visual card — not just a
+          // pointer to the card, so the battle / ISK / contested-systems story is written out.
+          const body = block(`scontro testa a testa ${a} vs ${b} (kill per direzione, timeline ISK, sistemi contesi, battaglie)`, d);
+          return card ? { ...body, cards: card } : body;
         }
       }
     }
@@ -475,8 +477,8 @@ export async function maybeMcp(question, standalone = question) {
       if (!d) return EMPTY;
       const header = focus ? `grafo coalizioni attorno a ${focus}` : "grafo coalizioni (alleati/nemici dalle battaglie)";
       const card = coalitionGraphCard(d);
-      if (!card) return block(header, d);
-      return { ...blockBody(header, "Rete coalizioni — vedi il grafo sotto.", d), cards: card };
+      const body = block(header, d);   // full-data narration AND the graph card, not just a pointer
+      return card ? { ...body, cards: card } : body;
     }
 
     // 5-bis) DOCTRINE SPECS — computed stats (DPS max/min, tank, velocità) + EFT of ONE
