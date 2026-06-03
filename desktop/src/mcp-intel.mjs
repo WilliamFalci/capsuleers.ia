@@ -383,6 +383,20 @@ function coalitionGraphCard(d) {
   };
 }
 
+// entity_timeline → a per-period activity list (one row per month/day/year bucket).
+// Rendered as a kill-list-style card. Tolerates the reduced `vs` shape (?? null).
+function timelineCard(d) {
+  const rows = (d?.buckets || []).map((b) => ({
+    period: b.period_start,
+    kills: b.kills ?? 0, losses: b.losses ?? 0,
+    soloKills: b.solo_kills ?? null, finalBlows: b.final_blows ?? null,
+    iskDestroyed: b.isk_destroyed ?? 0, iskLost: b.isk_lost ?? 0,
+  })).filter((r) => r.period);
+  if (!rows.length) return null;
+  const e = d?.entity;
+  return { kind: "timeline", entity: e ? { id: e.id, type: e.type, name: e.name } : null, bucket: d?.bucket || "month", rows };
+}
+
 // Builds the computed-specs block (+ EFT) for a resolved cluster. Returns the MCP block or null.
 async function specsBlock(target, entityLabel) {
   const res = await doctrineFitStats(target);
@@ -567,8 +581,9 @@ export async function maybeMcp(question, standalone = question) {
         const d = await callTool("battle_report", { battle_id: Number(bid[1]) });
         if (d) {
           const card = battleReportCard(d);
-          if (card) return { ...blockBody(`battle report #${bid[1]}`, `Report battaglia #${bid[1]} — vedi il recap sotto.`, d), cards: card };
-          return block(`battle report #${bid[1]}`, d);
+          // Full-data descriptive recap (from the real battle data, no invention) AND the card.
+          const body = block(`battle report #${bid[1]}`, d);
+          return card ? { ...body, cards: card } : body;
         }
       }
       if (/\b(ultime?\s+battagli\w*|battagli\w*\s+(?:recenti|più\s+grandi|grosse)|recent\s+battles?|biggest\s+battles?|latest\s+battles?|grandi\s+battagli\w*)\b/i.test(q)) {
@@ -591,21 +606,6 @@ export async function maybeMcp(question, standalone = question) {
       return { ...blockBody("kill più costosi (ultimi 30 giorni)", `I ${kills.length} kill più costosi — vedi la lista sotto.`, d), kills };
     }
 
-    // 9) CHARACTER/CORP HISTORY — inferred membership timeline.
-    {
-      const m = q.match(/\bstoria\s+(?:di|del|della|dell['’])\s+(.+)/i)
-        || q.match(/\bcorp\w*\s+passat\w+\s+(?:di|of|del)\s+(.+)/i)
-        || q.match(/\bdove\s+ha\s+milit\w+\s+(.+)/i)
-        || q.match(/\b(?:history|past\s+corp\w*|track\s+record)\s+of\s+(.+)/i)
-        || q.match(/\b(.+?)['’]s\s+(?:history|past\s+corps?)\b/i);
-      if (m) {
-        const entity = stripLead(clean(m[1]));
-        if (ok(entity)) {
-          const d = await callTool("character_history", { entity });
-          return d ? block(`storia di appartenenza (corp/alleanza) di ${entity}`, d) : EMPTY;
-        }
-      }
-    }
 
     // 10) PREYS_ON — who X kills most ("le prede di X", "who does X kill/prey on").
     {
@@ -726,7 +726,11 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("entity_timeline", { entity });
-          return d ? block(`timeline di attività di ${entity} (kill/perdite nel tempo)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const header = `timeline di attività di ${entity} (kill/perdite nel tempo)`;
+          const card = timelineCard(d);
+          if (!card) return block(header, d);
+          return { ...blockBody(header, `Timeline di ${entity} — vedi la lista sotto.`, d), cards: card };
         }
       }
     }
