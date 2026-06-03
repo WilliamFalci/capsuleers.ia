@@ -1832,6 +1832,72 @@
       return el;
     }
 
+    // coalition_graph → ego network: the central alliance + its strongest allied/enemy
+    // ties. Logos as nodes, edge colour = relation, thickness ∝ battles. Hand-rolled SVG.
+    function coalitionGraphEl(c) {
+      const T = SYS_LANG === "it"
+        ? { ally: "alleati", enemy: "nemici", mixed: "misto", width: "spessore = battaglie", more: "altri", net: "Rete coalizioni" }
+        : { ally: "allies", enemy: "enemies", mixed: "mixed", width: "width = battles", more: "more", net: "Coalition network" };
+      const el = document.createElement("div"); el.className = "panel";
+      const byId = new Map(c.nodes.map((n) => [n.id, n]));
+      // Pick the centre: the focus alliance if given, else the most-connected node.
+      const weight = new Map();
+      for (const l of c.links) { weight.set(l.a, (weight.get(l.a) || 0) + (l.w || 0)); weight.set(l.b, (weight.get(l.b) || 0) + (l.w || 0)); }
+      let centerId = (c.focus && byId.has(c.focus)) ? c.focus : null;
+      if (!centerId) { let best = -1; for (const [id, w] of weight) if (w > best) { best = w; centerId = id; } }
+      // Strongest tie per neighbour of the centre.
+      const nb = new Map();
+      for (const l of c.links) {
+        const other = l.a === centerId ? l.b : (l.b === centerId ? l.a : null);
+        if (other == null) continue;
+        const prev = nb.get(other);
+        if (!prev || (l.w || 0) > prev.w) nb.set(other, { w: l.w || 0, type: l.type });
+      }
+      const K = 14;
+      let neigh = [...nb.entries()].map(([id, v]) => ({ id, ...v })).sort((x, y) => y.w - x.w);
+      const extra = Math.max(0, neigh.length - K);
+      neigh = neigh.slice(0, K);
+
+      const head = document.createElement("div"); head.className = "rank-title";
+      head.textContent = `${c.focusName || byId.get(centerId)?.name || T.net} · ${nFmt(c.nodeCount)} ⬡ · ${nFmt(c.edgeCount)} ↔`;
+      el.appendChild(head);
+      if (!neigh.length) return el;
+
+      const W = 580, H = 520, cx = W / 2, cy = H / 2 - 4, R = Math.min(cx, cy) - 66;
+      const ws = neigh.map((n) => n.w), wmin = Math.min(...ws), wmax = Math.max(...ws);
+      const sw = (w) => (wmax > wmin ? 1.5 + 4.5 * (w - wmin) / (wmax - wmin) : 2.2);
+      const COL = { ally: "#22d3ee", enemy: "#f87171", mixed: "#e0b352" };
+      const pos = neigh.map((n, i) => {
+        const ang = -Math.PI / 2 + i * (2 * Math.PI / neigh.length);
+        return { ...n, x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) };
+      });
+      const node = (id, x, y, size, center) => {
+        const n = byId.get(id) || {}; const h = size / 2;
+        return `<a href="https://eve-kill.com/alliance/${id}">`
+          + `<image href="https://images.evetech.net/alliances/${id}/logo?size=64" x="${(x - h).toFixed(1)}" y="${(y - h).toFixed(1)}" width="${size}" height="${size}" />`
+          + `<rect x="${(x - h).toFixed(1)}" y="${(y - h).toFixed(1)}" width="${size}" height="${size}" rx="6" fill="none" stroke="${center ? "#f97316" : "#2a2f37"}" stroke-width="${center ? 2.5 : 1.4}" />`
+          + `<text x="${x.toFixed(1)}" y="${(y + h + 12).toFixed(1)}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#c4c7c5">${esc(n.ticker || n.name || "")}</text>`
+          + `</a>`;
+      };
+      const edges = pos.map((p) =>
+        `<line x1="${cx}" y1="${cy}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${COL[p.type] || COL.mixed}" stroke-width="${sw(p.w).toFixed(1)}" stroke-opacity="0.5" />`
+        + `<text x="${(cx + (p.x - cx) * 0.6).toFixed(1)}" y="${(cy + (p.y - cy) * 0.6).toFixed(1)}" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8a9099">${nFmt(p.w)}</text>`
+      ).join("");
+      const nodesSvg = pos.map((p) => node(p.id, p.x, p.y, 40, false)).join("") + node(centerId, cx, cy, 54, true);
+
+      const holder = document.createElement("div");
+      holder.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:520px;display:block">${edges}${nodesSvg}</svg>`;
+      el.appendChild(holder.firstChild);
+
+      const legend = document.createElement("div");
+      legend.style.cssText = "display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;font-family:ui-monospace,monospace;font-size:.72rem;color:#8a9099;margin-top:.5rem";
+      const key = (col, lbl) => `<span style="display:inline-flex;align-items:center;gap:.35rem"><i style="width:14px;height:3px;background:${col};display:inline-block"></i>${esc(lbl)}</span>`;
+      legend.innerHTML = key(COL.ally, T.ally) + key(COL.enemy, T.enemy) + key(COL.mixed, T.mixed)
+        + `<span>${esc(T.width)}</span>` + (extra ? `<span>+${extra} ${esc(T.more)}</span>` : "");
+      el.appendChild(legend);
+      return el;
+    }
+
     function renderCards(cards) {
       const wrap = document.createElement("div");
       if (cards.kind === "battles") { wrap.className = "cardgrid"; for (const b of cards.items) wrap.appendChild(battleCardEl(b)); return wrap; }
@@ -1844,6 +1910,7 @@
       else if (cards.kind === "syslist") wrap.appendChild(sysListEl(cards));
       else if (cards.kind === "versus") wrap.appendChild(versusEl(cards));
       else if (cards.kind === "battlecard") wrap.appendChild(battleReportEl(cards));
+      else if (cards.kind === "coalitiongraph") wrap.appendChild(coalitionGraphEl(cards));
       else if (cards.kind === "fitlist") wrap.appendChild(fitListEl(cards));
       else if (cards.kind === "fitstats") wrap.appendChild(fitStatsEl(cards));
       return wrap;

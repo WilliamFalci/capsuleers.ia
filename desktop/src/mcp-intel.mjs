@@ -133,7 +133,9 @@ function stripLead(s) {
 // Cleans an entity name captured from a two-side ("X vs Y") match: drops the leading
 // question framing ("chi vince…", "war report…") before the actual name.
 function cleanEntity(s) {
-  return stripLead(clean(s).replace(/^.*?\b(?:chi\s+vince|chi\s+è\s+più\s+forte|who\s+wins|war\s*report|report|confronto|guerra|war|battaglia|battle)\b\s*/i, ""));
+  return stripLead(clean(s)
+    .replace(/^.*?\b(?:chi\s+vince|chi\s+è\s+più\s+forte|who\s+wins|war\s*report|report|confronto|guerra|war|battaglia|battle)\b\s*/i, "")
+    .replace(/^\s*(?:tra|fra|between|contro)\s+/i, ""));   // drop a leftover connector ("guerra TRA X…")
 }
 const ok = (s) => s && s.length >= 2 && s.length <= 60;
 
@@ -355,6 +357,32 @@ function rankCard(d) {
   return { kind: "rank", entity: e ? { id: e.id, type: e.type, name: e.name } : null, dimension: d.dimension, rows };
 }
 
+// coalition_graph → a node-link graph card (alliance logos as nodes, edges coloured by
+// relation: allied / enemy / mixed, thickness ∝ battles). Every node + edge endpoint
+// already carries alliance_id, so the renderer builds evetech logo URLs with no lookup.
+function coalitionGraphCard(d) {
+  const nodes = (d?.nodes || [])
+    .filter((n) => n && n.alliance_id)
+    .map((n) => ({ id: n.alliance_id, name: n.name, ticker: n.ticker }));
+  if (nodes.length < 2) return null;
+  const mk = (e, type) => ({
+    a: e?.a?.alliance_id, b: e?.b?.alliance_id,
+    w: e?.total_battles ?? ((e?.allied_battles || 0) + (e?.enemy_battles || 0)), type,
+  });
+  const links = [
+    ...(d.allied_edges || []).map((e) => mk(e, "ally")),
+    ...(d.enemy_edges || []).map((e) => mk(e, "enemy")),
+    ...(d.mixed_edges || []).map((e) => mk(e, "mixed")),
+  ].filter((l) => l.a && l.b && l.a !== l.b);
+  if (!links.length) return null;
+  return {
+    kind: "coalitiongraph",
+    focus: d.focus?.alliance_id || null, focusName: d.focus?.name || null,
+    nodeCount: d.node_count ?? nodes.length, edgeCount: d.edge_count ?? links.length,
+    nodes, links,
+  };
+}
+
 // Builds the computed-specs block (+ EFT) for a resolved cluster. Returns the MCP block or null.
 async function specsBlock(target, entityLabel) {
   const res = await doctrineFitStats(target);
@@ -418,10 +446,14 @@ export async function maybeMcp(question, standalone = question) {
 
     // 3) WAR / HEAD-TO-HEAD — "X vs Y", "guerra tra X e Y", "confronta X e Y".
     {
-      const m = q.match(/(.+?)\s+(?:vs\.?|versus|contro)\s+(.+)/i)
+      // Explicit war framing ("guerra/war … tra/fra/between … e/and/vs") must be tried
+      // BEFORE the generic "X vs Y": otherwise "guerra tra The Initiative. vs Fraternity"
+      // is caught by the vs-matcher with side A = "guerra tra The Initiative." — the "tra"
+      // survives cleanEntity, side A is unresolvable, and the command silently no-ops.
+      const m = q.match(/\b(?:guerra|war)\b.*?\b(?:tra|fra|between|of)\s+(.+?)\s+(?:e|ed|and|vs\.?|versus|contro)\s+(.+)/i)
+        || q.match(/(.+?)\s+(?:vs\.?|versus|contro)\s+(.+)/i)
         || q.match(/\b(?:tra|fra|between)\s+(.+?)\s+(?:e|ed|and)\s+(.+)/i)
-        || q.match(/\b(?:confronta|compara|compare)\s+(.+?)\s+(?:e|ed|con|and|with|to)\s+(.+)/i)
-        || q.match(/\b(?:guerra|war)\b.*?\b(?:tra|fra|between|of)\s+(.+?)\s+(?:e|ed|and|vs)\s+(.+)/i);
+        || q.match(/\b(?:confronta|compara|compare)\s+(.+?)\s+(?:e|ed|con|and|with|to)\s+(.+)/i);
       if (m) {
         const a = cleanEntity(m[1]), b = cleanEntity(m[2]);
         if (ok(a) && ok(b)) {
@@ -440,7 +472,11 @@ export async function maybeMcp(question, standalone = question) {
       const fm = q.match(/\b(?:con|di|with|to)\s+(.+)$/i);
       const focus = fm ? stripLead(clean(fm[1])) : null;
       const d = await callTool("coalition_graph", focus && ok(focus) ? { focus_alliance: focus } : {});
-      return d ? block(focus ? `grafo coalizioni attorno a ${focus}` : "grafo coalizioni (alleati/nemici dalle battaglie)", d) : EMPTY;
+      if (!d) return EMPTY;
+      const header = focus ? `grafo coalizioni attorno a ${focus}` : "grafo coalizioni (alleati/nemici dalle battaglie)";
+      const card = coalitionGraphCard(d);
+      if (!card) return block(header, d);
+      return { ...blockBody(header, "Rete coalizioni — vedi il grafo sotto.", d), cards: card };
     }
 
     // 5-bis) DOCTRINE SPECS — computed stats (DPS max/min, tank, velocità) + EFT of ONE
