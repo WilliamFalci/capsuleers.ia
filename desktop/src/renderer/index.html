@@ -431,6 +431,16 @@
       max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .local-share-out a:hover { text-decoration: underline; }
     .local-share-out .exp { color: var(--muted); font-family: ui-monospace, monospace; }
+    /* [hidden] MUST win over the display:flex/inline-flex above — otherwise the share
+       row and its share/copy buttons render before the user ever clicks Share. */
+    #local-share[hidden], #dscan-share[hidden],
+    #local-share-out[hidden], #dscan-share-out[hidden],
+    #local-share-copy[hidden], #dscan-share-copy[hidden] { display: none !important; }
+    /* "Processing the link" placeholder state (orange, pulsing) while we wait for the server. */
+    .local-share-out.pending { background: #1a160f; border-left-color: var(--orange); color: #ecdcc4; }
+    .local-share-out.pending .msg::after { content: ""; display: inline-block; width: 8px; height: 8px;
+      margin-left: .35rem; border-radius: 50%; background: var(--orange); box-shadow: 0 0 8px var(--orange);
+      animation: pulse 1.2s infinite; vertical-align: middle; }
     /* history list */
     .local-history { margin: 0 1.2rem .6rem; border: 1px solid #232830; background: #0c0f13; }
     .local-history .lh-head { display: flex; align-items: center; gap: .5rem; padding: .45rem .7rem;
@@ -448,9 +458,9 @@
     .lh-row .lh-cnt { color: var(--muted); }
     .lh-row .lh-exp { margin-left: auto; color: #7fd692; font-family: ui-monospace, monospace; white-space: nowrap; }
     .lh-row .lh-exp.soon { color: #f0a020; }
-    .lh-row .lh-copy { background: transparent; border: 1px solid #2a2f37; color: #c9cfda; cursor: pointer;
+    .lh-row .lh-copy, .lh-row .lh-open { background: transparent; border: 1px solid #2a2f37; color: #c9cfda; cursor: pointer;
       font-size: .68rem; padding: 1px 6px; border-radius: 2px; }
-    .lh-row .lh-copy:hover { border-color: var(--orange); color: var(--orange); }
+    .lh-row .lh-copy:hover, .lh-row .lh-open:hover { border-color: var(--orange); color: var(--orange); }
     .lh-kind { font-size: .58rem; font-family: ui-monospace, monospace; letter-spacing: .06em;
       text-transform: uppercase; padding: 1px 5px; border-radius: 2px; border: 1px solid; flex: 0 0 auto; }
     .lh-kind.intel { color: var(--orange); border-color: rgba(255,122,24,.5); }
@@ -836,7 +846,7 @@
         <span class="msg" id="local-share-msg"></span>
         <a id="local-share-url" target="_blank" rel="noopener"></a>
         <span class="exp" id="local-share-exp"></span>
-        <button class="local-action ghost" id="local-share-copy"></button>
+        <button class="local-action ghost" id="local-share-copy" hidden></button>
       </div>
       <div class="local-body" id="local-body"></div>
     </div>
@@ -869,7 +879,7 @@
         <span class="msg" id="dscan-share-msg"></span>
         <a id="dscan-share-url" target="_blank" rel="noopener"></a>
         <span class="exp" id="dscan-share-exp"></span>
-        <button class="local-action ghost" id="dscan-share-copy"></button>
+        <button class="local-action ghost" id="dscan-share-copy" hidden></button>
       </div>
       <div class="local-body" id="dscan-body"></div>
     </div>
@@ -1067,7 +1077,7 @@
 
     // Reset the share UI for a fresh resolution; re-show the Share button once results land.
     function hideShareUi() {
-      shareOut.hidden = true; shareOut.classList.remove("err");
+      shareOut.hidden = true; shareOut.classList.remove("err", "pending");
       shareBtn.hidden = true;
     }
     capsuleers.local.onStart(hideShareUi);
@@ -1092,10 +1102,16 @@
 
     shareBtn.addEventListener("click", async () => {
       shareBtn.disabled = true; shareLabel.textContent = L.sharing;
-      shareOut.hidden = true; shareOut.classList.remove("err");
+      // Show the share row immediately with a "processing" placeholder until the server replies.
+      shareOut.classList.remove("err"); shareOut.classList.add("pending");
+      shareMsg.textContent = L.shareProcessing;
+      shareUrlEl.textContent = ""; shareUrlEl.removeAttribute("href");
+      shareExpEl.textContent = ""; shareCopyBtn.hidden = true;
+      shareOut.hidden = false;
       let r;
       try { r = await capsuleers.local.share(); } catch (e) { r = { error: e.message }; }
       shareBtn.disabled = false; shareLabel.textContent = L.shareBtn;
+      shareOut.classList.remove("pending");
       if (!r || r.error) {
         shareOut.classList.add("err");
         shareMsg.textContent = L.shareErr;
@@ -1153,6 +1169,7 @@
         return `<div class="lh-row" data-url="${esc(String(e.url || ""))}">` +
           `${badge}<span class="lh-when">${esc(when)}</span>${cnt}` +
           `<span class="lh-exp" data-exp="${e.expiresAt}"></span>` +
+          `<button class="lh-open">${esc(L.shareOpen)}</button>` +
           `<button class="lh-copy">${esc(L.shareCopy)}</button></div>`;
       }).join("");
       histPanel.innerHTML =
@@ -1163,6 +1180,9 @@
         renderHistory();
       });
       for (const row of histPanel.querySelectorAll(".lh-row")) {
+        row.querySelector(".lh-open")?.addEventListener("click", () => {
+          const u = row.dataset.url; if (u) window.open(u, "_blank");   // opens in the system browser
+        });
         row.querySelector(".lh-copy")?.addEventListener("click", () => {
           const u = row.dataset.url; if (!u) return;
           capsuleers.clipboard.write(u);
@@ -1200,14 +1220,20 @@
     const dsShareExpEl = document.getElementById("dscan-share-exp");
     const dsShareCopyBtn = document.getElementById("dscan-share-copy");
     let _dsShareUrl = null;
-    function hideDScanShare() { dsShareOut.hidden = true; dsShareOut.classList.remove("err"); dsShareBtn.hidden = true; }
+    function hideDScanShare() { dsShareOut.hidden = true; dsShareOut.classList.remove("err", "pending"); dsShareBtn.hidden = true; }
     capsuleers.local.onDScanStart(hideDScanShare);   // reset on a fresh analysis
     dsShareBtn.addEventListener("click", async () => {
       dsShareBtn.disabled = true; dsShareLabel.textContent = L.sharing;
-      dsShareOut.hidden = true; dsShareOut.classList.remove("err");
+      // Show the share row immediately with a "processing" placeholder until the server replies.
+      dsShareOut.classList.remove("err"); dsShareOut.classList.add("pending");
+      dsShareMsg.textContent = L.shareProcessing;
+      dsShareUrlEl.textContent = ""; dsShareUrlEl.removeAttribute("href");
+      dsShareExpEl.textContent = ""; dsShareCopyBtn.hidden = true;
+      dsShareOut.hidden = false;
       let r;
       try { r = await capsuleers.local.shareDScan(); } catch (e) { r = { error: e.message }; }
       dsShareBtn.disabled = false; dsShareLabel.textContent = L.shareBtn;
+      dsShareOut.classList.remove("pending");
       if (!r || r.error) {
         dsShareOut.classList.add("err");
         dsShareMsg.textContent = L.shareErr;
@@ -1927,10 +1953,10 @@
         resolvedOf: (r, t) => ` (risolti ${r}/${t})`,
         dangerousCount: (n) => ` · ${n} pericolosi`,
         shareBtn: "Condividi", shareTitle: "Condividi questo intel (link valido 24h)",
-        sharing: "Creo il link…", shareErr: "Impossibile creare il link condivisibile",
+        sharing: "Creo il link…", shareProcessing: "Elaborazione del link condivisibile in corso…", shareErr: "Impossibile creare il link condivisibile",
         shareCopied: "Link copiato negli appunti — pronto da condividere",
         shareExpires: (s) => `scade tra ${s}`,
-        shareCopy: "Copia", shareCopiedShort: "Copiato!",
+        shareCopy: "Copia", shareOpen: "Apri", shareCopiedShort: "Copiato!",
         historyToggle: "Cronologia link condivisi", historyTitle: "Link condivisi",
         historyEmpty: "Nessun link condiviso di recente.", historyClear: "Svuota",
         pilotsShort: (n) => `${n} piloti`,
@@ -2031,10 +2057,10 @@
         resolvedOf: (r, t) => ` (resolved ${r}/${t})`,
         dangerousCount: (n) => ` · ${n} dangerous`,
         shareBtn: "Share", shareTitle: "Share this intel (link valid for 24h)",
-        sharing: "Creating link…", shareErr: "Couldn't create the share link",
+        sharing: "Creating link…", shareProcessing: "Processing the share link…", shareErr: "Couldn't create the share link",
         shareCopied: "Link copied to clipboard — ready to share",
         shareExpires: (s) => `expires in ${s}`,
-        shareCopy: "Copy", shareCopiedShort: "Copied!",
+        shareCopy: "Copy", shareOpen: "Open", shareCopiedShort: "Copied!",
         historyToggle: "Shared-link history", historyTitle: "Shared links",
         historyEmpty: "No links shared recently.", historyClear: "Clear",
         pilotsShort: (n) => `${n} pilots`,
