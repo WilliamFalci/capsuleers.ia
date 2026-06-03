@@ -1420,7 +1420,11 @@
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(?<![*])\*([^*\n]+)\*(?![*])/g, "<em>$1</em>");
+      .replace(/(?<![*])\*([^*\n]+)\*(?![*])/g, "<em>$1</em>")
+      // Auto-link bare http(s) URLs (e.g. a killmail link) → clickable, opens in the browser.
+      // Skips URLs already inside an href="…" / markdown link (negative lookbehind) and keeps
+      // trailing punctuation out of the link.
+      .replace(/(?<![">=])\bhttps?:\/\/[^\s<]+/g, (u) => { const m = u.match(/^(.*?)([.,;:!?)]*)$/); return `<a href="${m[1]}">${m[1]}</a>${m[2]}`; });
     function mdToHtml(md) {
       const lines = esc(md).split("\n");
       let html = "";
@@ -1832,9 +1836,10 @@
       return el;
     }
 
-    // coalition_graph → force-directed network of alliances. NO entity is centred: a
-    // Fruchterman-Reingold layout places every node by its real ties and ALL edges are
-    // drawn (colour = allied/enemy/mixed, thickness ∝ battles). Hand-rolled, no lib.
+    // coalition_graph → circular chord diagram. Every alliance sits on a RING (no entity
+    // is centred) and ALL relationships are drawn as gently-bundled chords coloured by
+    // type (allied=cyan / enemy=red / mixed=amber, thickness ∝ battles). Fully
+    // deterministic — no force simulation, so it can never collapse into a blob.
     function coalitionGraphEl(c) {
       const it = SYS_LANG === "it";
       const T = it
@@ -1846,69 +1851,46 @@
       head.textContent = `${T.net} · ${nFmt(c.nodeCount)} ⬡ · ${nFmt(c.edgeCount)} ↔`;
       el.appendChild(head);
 
-      // Every node that takes part in at least one relationship.
       const present = new Set(); for (const l of c.links) { present.add(l.a); present.add(l.b); }
-      const ids = [...present].filter((id) => byId.has(id));
+      // Ring order = total incident battles desc → busiest alliances spread out, stable layout.
+      const wsum = new Map();
+      for (const l of c.links) { wsum.set(l.a, (wsum.get(l.a) || 0) + (l.w || 0)); wsum.set(l.b, (wsum.get(l.b) || 0) + (l.w || 0)); }
+      const ids = [...present].filter((id) => byId.has(id)).sort((a, b) => (wsum.get(b) || 0) - (wsum.get(a) || 0));
       const N = ids.length;
       if (N < 2) return el;
       const ix = new Map(ids.map((id, i) => [id, i]));
       const E = c.links.map((l) => ({ s: ix.get(l.a), t: ix.get(l.b), w: l.w || 1, type: l.type }))
         .filter((e) => e.s != null && e.t != null && e.s !== e.t);
 
-      const W = 760, H = 640;
-      // Deterministic seed (golden-angle spiral) → stable layout across renders, no RNG.
-      const GA = Math.PI * (3 - Math.sqrt(5));
-      const P = ids.map((_, i) => {
-        const r = 30 + 240 * Math.sqrt((i + 0.5) / N), a = i * GA;
-        return { x: W / 2 + r * Math.cos(a), y: H / 2 + r * Math.sin(a), vx: 0, vy: 0 };
-      });
-      // Fruchterman-Reingold: all-pairs repulsion + edge attraction + cooling.
-      const k = Math.sqrt((W * H) / N) * 0.62, ITER = 320;
-      for (let step = 0; step < ITER; step++) {
-        const temp = (Math.min(W, H) / 7) * (1 - step / ITER);
-        for (let i = 0; i < N; i++) { P[i].vx = 0; P[i].vy = 0; }
-        for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
-          let dx = P[i].x - P[j].x, dy = P[i].y - P[j].y, d = Math.hypot(dx, dy) || 0.01;
-          const f = (k * k) / d, ux = dx / d * f, uy = dy / d * f;
-          P[i].vx += ux; P[i].vy += uy; P[j].vx -= ux; P[j].vy -= uy;
-        }
-        for (const e of E) {
-          let dx = P[e.s].x - P[e.t].x, dy = P[e.s].y - P[e.t].y, d = Math.hypot(dx, dy) || 0.01;
-          const f = (d * d) / k, ax = dx / d * f, ay = dy / d * f;
-          P[e.s].vx -= ax; P[e.s].vy -= ay; P[e.t].vx += ax; P[e.t].vy += ay;
-        }
-        for (let i = 0; i < N; i++) {
-          let d = Math.hypot(P[i].vx, P[i].vy) || 0.01;
-          P[i].x += P[i].vx / d * Math.min(d, temp);
-          P[i].y += P[i].vy / d * Math.min(d, temp);
-        }
-      }
-      // Fit to the viewBox with padding.
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const p of P) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
-      const pad = 46, s = Math.min((W - 2 * pad) / Math.max(1, maxX - minX), (H - 2 * pad) / Math.max(1, maxY - minY));
-      for (const p of P) { p.x = pad + (p.x - minX) * s; p.y = pad + (p.y - minY) * s; }
+      const SZ = N > 40 ? 20 : N > 28 ? 24 : 30, hsz = SZ / 2;
+      const R = Math.max(210, Math.round((N * (SZ + 16)) / (2 * Math.PI)));   // ring big enough for spacing
+      const VB = 2 * (R + 80), cx = VB / 2, cy = VB / 2;                      // margin for logos + radial labels
+      const ang = (i) => -Math.PI / 2 + i * (2 * Math.PI / N);
+      const PX = ids.map((_, i) => cx + R * Math.cos(ang(i)));
+      const PY = ids.map((_, i) => cy + R * Math.sin(ang(i)));
 
       const COL = { ally: "#22d3ee", enemy: "#f87171", mixed: "#e0b352" };
       const ws = E.map((e) => e.w), wmin = Math.min(...ws), wmax = Math.max(...ws);
-      const sw = (w) => (wmax > wmin ? 1 + 3.5 * (w - wmin) / (wmax - wmin) : 1.6);
+      const sw = (w) => (wmax > wmin ? 1 + 3 * (w - wmin) / (wmax - wmin) : 1.5);
       const nm = (id) => byId.get(id)?.name || byId.get(id)?.ticker || String(id);
+      // Chords bowed toward the centre (control point pulled 50% inward) → soft bundling.
       const edgesSvg = E.map((e) => {
-        const A = P[e.s], B = P[e.t];
+        const ax = PX[e.s], ay = PY[e.s], bx = PX[e.t], by = PY[e.t];
+        const qx = cx + ((ax + bx) / 2 - cx) * 0.5, qy = cy + ((ay + by) / 2 - cy) * 0.5;
         const tip = `${nm(ids[e.s])} ↔ ${nm(ids[e.t])} · ${e.w} ${T.battles} · ${T[e.type] || T.mixed}`;
-        return `<line x1="${A.x.toFixed(1)}" y1="${A.y.toFixed(1)}" x2="${B.x.toFixed(1)}" y2="${B.y.toFixed(1)}" stroke="${COL[e.type] || COL.mixed}" stroke-width="${sw(e.w).toFixed(1)}" stroke-opacity="0.4"><title>${esc(tip)}</title></line>`;
+        return `<path d="M${ax.toFixed(1)} ${ay.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${bx.toFixed(1)} ${by.toFixed(1)}" fill="none" stroke="${COL[e.type] || COL.mixed}" stroke-width="${sw(e.w).toFixed(1)}" stroke-opacity="0.32"><title>${esc(tip)}</title></path>`;
       }).join("");
-      const SZ = N > 26 ? 26 : 32, h = SZ / 2;
       const nodesSvg = ids.map((id, i) => {
-        const p = P[i], n = byId.get(id) || {}, foc = c.focus && id === c.focus;
+        const x = PX[i], y = PY[i], n = byId.get(id) || {}, foc = c.focus && id === c.focus;
+        const ca = Math.cos(ang(i)), sa = Math.sin(ang(i)), anchor = ca >= 0 ? "start" : "end";
         return `<a href="https://eve-kill.com/alliance/${id}"><title>${esc((n.name || "") + (n.ticker ? ` [${n.ticker}]` : ""))}</title>`
-          + `<image href="https://images.evetech.net/alliances/${id}/logo?size=64" x="${(p.x - h).toFixed(1)}" y="${(p.y - h).toFixed(1)}" width="${SZ}" height="${SZ}" />`
-          + `<rect x="${(p.x - h).toFixed(1)}" y="${(p.y - h).toFixed(1)}" width="${SZ}" height="${SZ}" rx="5" fill="none" stroke="${foc ? "#f97316" : "#2a2f37"}" stroke-width="${foc ? 2.5 : 1.2}" />`
-          + `<text x="${p.x.toFixed(1)}" y="${(p.y + h + 10).toFixed(1)}" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#c4c7c5">${esc(n.ticker || "")}</text></a>`;
+          + `<image href="https://images.evetech.net/alliances/${id}/logo?size=64" x="${(x - hsz).toFixed(1)}" y="${(y - hsz).toFixed(1)}" width="${SZ}" height="${SZ}" />`
+          + `<rect x="${(x - hsz).toFixed(1)}" y="${(y - hsz).toFixed(1)}" width="${SZ}" height="${SZ}" rx="5" fill="none" stroke="${foc ? "#f97316" : "#2a2f37"}" stroke-width="${foc ? 2.5 : 1.2}" />`
+          + `<text x="${(x + ca * (hsz + 6)).toFixed(1)}" y="${(y + sa * (hsz + 6)).toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" font-size="9" font-family="ui-monospace,monospace" fill="#c4c7c5">${esc(n.ticker || "")}</text></a>`;
       }).join("");
 
       const holder = document.createElement("div");
-      holder.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:640px;display:block">${edgesSvg}${nodesSvg}</svg>`;
+      holder.innerHTML = `<svg viewBox="0 0 ${VB} ${VB}" width="100%" style="max-height:680px;display:block">${edgesSvg}${nodesSvg}</svg>`;
       el.appendChild(holder.firstChild);
 
       const legend = document.createElement("div");
@@ -1916,6 +1898,43 @@
       const key = (col, lbl) => `<span style="display:inline-flex;align-items:center;gap:.35rem"><i style="width:14px;height:3px;background:${col};display:inline-block"></i>${esc(lbl)}</span>`;
       legend.innerHTML = key(COL.ally, T.ally) + key(COL.enemy, T.enemy) + key(COL.mixed, T.mixed) + `<span>${esc(T.width)}</span>`;
       el.appendChild(legend);
+
+      // Allies grouped per alliance (roster): one row per alliance listing ALL its allies —
+      // each ally as logo + ticker + (shared battles). Sorted by total shared battles desc.
+      const allyOf = new Map();
+      for (const e of E) {
+        if (e.type !== "ally") continue;
+        const A = ids[e.s], B = ids[e.t];
+        if (!allyOf.has(A)) allyOf.set(A, []);
+        if (!allyOf.has(B)) allyOf.set(B, []);
+        allyOf.get(A).push({ id: B, w: e.w });
+        allyOf.get(B).push({ id: A, w: e.w });
+      }
+      const subjects = [...allyOf.keys()].filter((id) => byId.has(id))
+        .map((id) => ({ id, allies: allyOf.get(id).sort((x, y) => y.w - x.w), tot: allyOf.get(id).reduce((s, x) => s + x.w, 0) }))
+        .sort((a, b) => b.tot - a.tot);
+      if (subjects.length) {
+        const lh = document.createElement("div"); lh.className = "rank-title";
+        lh.style.cssText = "margin-top:1.1rem;font-size:.8rem";
+        lh.textContent = it ? "Alleanze e i loro alleati" : "Alliances and their allies";
+        el.appendChild(lh);
+        const tk = (id) => esc(byId.get(id)?.ticker || byId.get(id)?.name || id);
+        const logo = (id, sz) => `<img src="https://images.evetech.net/alliances/${id}/logo?size=32" alt="" style="width:${sz}px;height:${sz}px;border-radius:3px;background:#0a0b0d;flex:0 0 auto" />`;
+        const list = document.createElement("div");
+        list.style.cssText = "margin-top:.5rem;display:flex;flex-direction:column;gap:4px";
+        for (const sub of subjects) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .6rem;padding:.45rem .65rem;background:#0e1014;border:1px solid var(--line);border-left:3px solid #22d3ee;border-radius:3px;font-family:ui-monospace,monospace;font-size:.76rem";
+          const subj = `<a href="https://eve-kill.com/alliance/${sub.id}" style="display:inline-flex;align-items:center;gap:.4rem;color:#e6e9ee;text-decoration:none;flex:0 0 auto;min-width:6.5rem">`
+            + logo(sub.id, 24) + `<b style="white-space:nowrap">${tk(sub.id)}</b></a><span style="color:#22d3ee;flex:0 0 auto">›</span>`;
+          const allies = sub.allies.map((al) =>
+            `<a href="https://eve-kill.com/alliance/${al.id}" title="${tk(al.id)} · ${nFmt(al.w)} ${esc(T.battles)}" style="display:inline-flex;align-items:center;gap:.3rem;color:#c4c7c5;text-decoration:none">`
+            + logo(al.id, 18) + `<span style="white-space:nowrap">${tk(al.id)} <span style="color:#8a9099">(${nFmt(al.w)})</span></span></a>`).join("");
+          row.innerHTML = subj + `<span style="flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:.35rem .7rem;align-items:center">${allies}</span>`;
+          list.appendChild(row);
+        }
+        el.appendChild(list);
+      }
       return el;
     }
 
@@ -1953,6 +1972,27 @@
       return el;
     }
 
+    // ships_used → most-flown hulls as a kill-list-style list: ship render + name + count.
+    function shipsListEl(c) {
+      const el = document.createElement("div"); el.className = "panel";
+      if (c.entityName) { const h = document.createElement("div"); h.className = "rank-title"; h.textContent = c.entityName; el.appendChild(h); }
+      const list = document.createElement("div");
+      list.style.cssText = "margin-top:.7rem;display:flex;flex-direction:column;gap:4px";
+      for (const s of c.items) {
+        const a = document.createElement("a");
+        a.href = `https://eve-kill.com/item/${s.id}`;
+        a.title = "eve-kill.com";
+        a.style.cssText = "display:flex;align-items:center;gap:.6rem;padding:.35rem .65rem;background:#0e1014;border:1px solid var(--line);border-left:3px solid var(--orange);border-radius:3px;color:#c4c7c5;text-decoration:none;font-family:ui-monospace,monospace;font-size:.82rem";
+        const kl = (s.kills || s.losses) ? ` <span style="opacity:.7">(${nFmt(s.kills || 0)}K·${nFmt(s.losses || 0)}${SYS_LANG === "it" ? "P" : "L"})</span>` : "";
+        a.innerHTML = `<img src="${IMG}/types/${s.id}/render?size=32" alt="" style="width:30px;height:30px;flex:0 0 auto;background:#0a0b0d" />`
+          + `<span style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>`
+          + (s.count != null ? `<span style="margin-left:auto;color:#8a9099;white-space:nowrap;flex:0 0 auto">${nFmt(s.count)}×${kl}</span>` : "");
+        list.appendChild(a);
+      }
+      el.appendChild(list);
+      return el;
+    }
+
     function renderCards(cards) {
       const wrap = document.createElement("div");
       if (cards.kind === "battles") { wrap.className = "cardgrid"; for (const b of cards.items) wrap.appendChild(battleCardEl(b)); return wrap; }
@@ -1967,6 +2007,7 @@
       else if (cards.kind === "battlecard") wrap.appendChild(battleReportEl(cards));
       else if (cards.kind === "coalitiongraph") wrap.appendChild(coalitionGraphEl(cards));
       else if (cards.kind === "timeline") wrap.appendChild(timelineEl(cards));
+      else if (cards.kind === "shiplist") wrap.appendChild(shipsListEl(cards));
       else if (cards.kind === "fitlist") wrap.appendChild(fitListEl(cards));
       else if (cards.kind === "fitstats") wrap.appendChild(fitStatsEl(cards));
       return wrap;
@@ -2005,6 +2046,7 @@
         "- **Meta & dottrine**: *\"qual è la meta del momento?\"*  ·  *\"dottrine di <corp>\"*",
         "- **Specifiche di una dottrina**: dopo *\"dottrine di <corp>\"*, chiedi *\"fitting della <nave>\"* / *\"specifiche della <nave>\"* / *\"specifiche #2\"* → DPS e gittata con munizione max/min, tank, cap, velocità, targeting **+ il fit completo in formato EFT**",
         "- **Fit per necessità**: *\"voglio un fit PvP per la Vagabond\"*, *\"cercami un fit da ratting per il Drake\"* → lista di fit della community (EVE Workbench); poi *\"specifiche del #1\"* per DPS/tank/EFT calcolati",
+        "- **Come fitta un pilota**: *\"come fitta <pilota> la <nave>\"* → l'EFT dalla sua perdita più recente di quella nave (dal killboard)",
         "- **Kill più costosi**: *\"kill più costosi\"*",
         "- **Coalizioni**: *\"coalizioni\"* / *\"chi è alleato con <alleanza>\"*",
         "- **Killmail**: incolla un link zKillboard/eve-kill, oppure *\"racconta il killmail <id>\"*, *\"analizza il killmail <id>\"* (analisi forense), *\"fit del killmail <id>\"*",
@@ -2041,6 +2083,7 @@
         "- **Meta & doctrines**: *\"what's the meta right now?\"*  ·  *\"doctrines of <corp>\"*",
         "- **Doctrine specs**: after *\"doctrines of <corp>\"*, ask *\"fit of the <ship>\"* / *\"specs of the <ship>\"* / *\"specs #2\"* → DPS and range with the high-damage/long-range ammo, tank, cap, speed, targeting **+ the full fit in EFT format**",
         "- **Fit by need**: *\"I want a PvP fit for the Vagabond\"*, *\"find me a ratting fit for the Drake\"* → community fit list (EVE Workbench); then *\"specs of #1\"* for computed DPS/tank/EFT",
+        "- **How a pilot fits**: *\"how does <pilot> fit the <ship>\"* → the EFT from their most recent loss of that hull (from the killboard)",
         "- **Most expensive kills**: *\"most expensive kills\"*",
         "- **Coalitions**: *\"coalitions\"* / *\"who is allied with <alliance>\"*",
         "- **Killmails**: paste a zKillboard/eve-kill link, or *\"tell the story of killmail <id>\"*, *\"analyze killmail <id>\"* (forensics), *\"fit of killmail <id>\"*",
@@ -2369,6 +2412,7 @@
       it: [
         { c: "dottrine", d: "Dottrine/fit dominanti di un'alleanza o corp", i: "dottrine di ", a: "<corp/alleanza>" },
         { c: "fit", d: "Cerca un fit della community per una nave", i: "voglio un fit per ", a: "<nave> [pvp/pve…]" },
+        { c: "come-fitta", d: "Come fitta una nave uno specifico pilota (dalle loss recenti)", i: "come fitta ", a: "<pilota> la <nave>" },
         { c: "specifiche", d: "Statistiche + EFT di un fit dalla lista/dottrina", i: "specifiche del #", a: "<N>" },
         { c: "chi-è", d: "Intel su pilota / corp / alleanza", i: "chi è ", a: "<nome>" },
         { c: "vola-con", d: "Compagni di volo abituali", i: "con chi vola ", a: "<pilota>" },
@@ -2395,6 +2439,7 @@
       en: [
         { c: "doctrines", d: "Dominant doctrines/fits of an alliance or corp", i: "doctrines of ", a: "<corp/alliance>" },
         { c: "fit", d: "Search a community fit for a ship", i: "I want a fit for ", a: "<ship> [pvp/pve…]" },
+        { c: "pilot-fit", d: "How a specific pilot fits a ship (from recent losses)", i: "how does ", a: "<pilot> fit the <ship>" },
         { c: "specs", d: "Stats + EFT of a fit from the list/doctrine", i: "specs of #", a: "<N>" },
         { c: "who-is", d: "Intel on pilot / corp / alliance", i: "who is ", a: "<name>" },
         { c: "flies-with", d: "Frequent wingmates", i: "who flies with ", a: "<pilot>" },

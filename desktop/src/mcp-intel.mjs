@@ -397,6 +397,49 @@ function timelineCard(d) {
   return { kind: "timeline", entity: e ? { id: e.id, type: e.type, name: e.name } : null, bucket: d?.bucket || "month", rows };
 }
 
+// ships_used → most-flown hulls list (ship render + name + count). Defensive parse: the
+// tool shape can vary, so we probe several array/field names and fall back to the dump.
+function shipsCard(d, entityName) {
+  // ships_used puts the rows under `breakdown`; usage = kills + losses (no `count` field).
+  const arr = Array.isArray(d) ? d : (d?.breakdown || d?.ships || d?.top_ships || d?.results || d?.data || d?.items || []);
+  const items = arr.map((s) => {
+    const k = s.kills ?? 0, l = s.losses ?? 0;
+    return {
+      id: s.type_id ?? s.ship_type_id ?? s.id,
+      name: s.name ?? s.ship_name ?? `type ${s.type_id ?? s.ship_type_id ?? "?"}`,
+      count: s.count ?? s.used ?? s.flown ?? s.times ?? (k + l || null),
+      kills: k, losses: l,
+    };
+  }).filter((s) => s.id);
+  items.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+  if (!items.length) return null;
+  return { kind: "shiplist", entityName: entityName || null, items: items.slice(0, 30) };
+}
+
+// "How does pilot X fit ship Y" → the pilot's most recent LOSS of that hull, EFT extracted.
+// entity_kills has no ship filter (client-side filter on victim.ship_type_id), with
+// expensive_losses as a server-side hull fallback; killmail_fitting yields the EFT. Skips
+// killmails whose fit isn't extracted yet (unprocessed / no fitted modules).
+async function pilotShipFit(pilot, shipText) {
+  const sr = await callTool("search", { query: shipText, type: "ship" });
+  const hit = (sr?.hits || [])[0];
+  if (!hit?.id) return { noShip: true };                       // not a ship → let other intents try
+  const shipId = hit.id, shipName = hit.name || shipText;
+  const ek = await callTool("entity_kills", { entity: pilot, type: "character", role: "losses", limit: 50 });
+  const pilotId = ek?.entity?.id, pilotName = ek?.entity?.name || pilot;
+  let matches = (ek?.kills || []).filter((k) => k?.victim?.ship_type_id === shipId);
+  if (!matches.length && pilotId) {
+    const el = await callTool("expensive_losses", { victim_character_id: pilotId, ship_type_id: shipId, days: 365, limit: 20 });
+    matches = (el?.kills || []).filter((k) => (k?.victim_ship?.type_id ?? k?.victim?.ship_type_id) === shipId);
+  }
+  if (!matches.length) return { found: false, shipName, pilotName };
+  for (const k of matches.slice(0, 6)) {
+    const eft = extractEft(await callTool("killmail_fitting", { killmail_id: k.killmail_id, format: "eft" }));
+    if (eft) return { found: true, shipName, pilotName, eft, used: k, count: matches.length };
+  }
+  return { found: true, shipName, pilotName, eft: null, used: matches[0], count: matches.length };
+}
+
 // Builds the computed-specs block (+ EFT) for a resolved cluster. Returns the MCP block or null.
 async function specsBlock(target, entityLabel) {
   const res = await doctrineFitStats(target);
@@ -493,6 +536,39 @@ export async function maybeMcp(question, standalone = question) {
       const card = coalitionGraphCard(d);
       const body = block(header, d);   // full-data narration AND the graph card, not just a pointer
       return card ? { ...body, cards: card } : body;
+    }
+
+    // 4-bis) PILOT SHIP FIT — "come fitta <pilota> la <nave>" / "how does <pilot> fit <ship>"
+    //   → the pilot's most recent loss of that hull, with the EFT pulled from the killmail.
+    //   Placed before the doctrine/fit intents; the ship name is validated via `search`, so a
+    //   mis-split (or a non-ship word) returns noShip and falls through to the other intents.
+    {
+      const m = q.match(/\bcome\s+(?:fitt\w+|mont\w+|equipaggi\w+|arm\w+)\s+(.+?)\s+(?:il|lo|la|l['’]|i|gli|le)\s+(.+)/i)
+        || q.match(/\bhow\s+does\s+(.+?)\s+(?:fit|fly|run)\s+(?:the\s+|a\s+|an\s+)?(.+)/i)
+        || q.match(/\bfit\s+di\s+(.+?)\s+(?:per|sulla?|sul)\s+(?:il|lo|la|l['’])?\s*(.+)/i);
+      if (m) {
+        const pilot = stripLead(clean(m[1])), shipText = stripLead(clean(m[2]));
+        if (ok(pilot) && ok(shipText)) {
+          const r = await pilotShipFit(pilot, shipText);
+          if (r && !r.noShip) {
+            const header = `fit di ${r.pilotName || pilot} per ${r.shipName} (da loss recenti)`;
+            if (!r.found) return blockBody(header, `Nessuna perdita recente di ${r.shipName} trovata per ${r.pilotName || pilot} (cercato tra le ultime 50 perdite e nell'ultimo anno).`, { pilota: r.pilotName, nave: r.shipName });
+            const summary = {
+              pilota: r.pilotName, nave: r.shipName, perdita_del: r.used?.time,
+              valore_isk: r.used?.total_value, sistema: r.used?.system?.name,
+              killmail: r.used?.killmail_id ? `https://eve-kill.com/kill/${r.used.killmail_id}` : null,
+              perdite_della_nave_trovate: r.count,
+            };
+            if (!r.eft) return blockBody(header, render(summary) + "\nNota: il killmail non ha ancora un fit estratto (non ancora processato o vittima senza moduli equipaggiati).", summary);
+            // Compute the fit stats panel (eve-fit-engine) from the EFT, like doctrine specs.
+            let stats = null; try { stats = await doctrineFitStatsData(r.eft); } catch { /* compute failed → still show the EFT */ }
+            const baseR = blockBody(header, render(summary), summary);
+            return stats?.card
+              ? { ...baseR, cards: { ...stats.card, context: `loss · ${r.pilotName || pilot}` }, eft: r.eft }
+              : { ...baseR, eft: r.eft };
+          }
+        }
+      }
     }
 
     // 5-bis) DOCTRINE SPECS — computed stats (DPS max/min, tank, velocità) + EFT of ONE
@@ -763,7 +839,11 @@ export async function maybeMcp(question, standalone = question) {
         const entity = stripLead(clean(m[1]));
         if (ok(entity)) {
           const d = await callTool("ships_used", { entity });
-          return d ? block(`navi più usate da ${entity} (ultimi 90gg)`, d) : EMPTY;
+          if (!d) return EMPTY;
+          const header = `navi più usate da ${entity} (ultimi 90gg)`;
+          const card = shipsCard(d, entity);
+          if (!card) return block(header, d);
+          return { ...blockBody(header, `Navi più usate da ${entity} — vedi la lista sotto.`, d), cards: card };
         }
       }
     }
