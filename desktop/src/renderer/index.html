@@ -73,7 +73,7 @@
 
     /* Mini-mode (always-on-top icon) */
     #mini { display: none; }
-    body.mini header, body.mini #chat, body.mini footer { display: none; }
+    body.mini header, body.mini #chat, body.mini footer, body.mini .toolbar { display: none; }
     body.mini #mini {
       display: flex; align-items: center; justify-content: center;
       position: fixed; inset: 0; -webkit-app-region: drag;  /* drag to move */
@@ -129,6 +129,7 @@
       font-family: ui-monospace, monospace; font-size: .7rem; letter-spacing: .12em;
       text-transform: uppercase; color: var(--muted);
       border: 1px solid var(--line); padding: .15rem .5rem; border-radius: 2px;
+      white-space: nowrap; flex: 0 0 auto;   /* never wrap the status/GPU chips per-word */
     }
     #status { display: flex; align-items: center; gap: .4rem; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange);
@@ -410,6 +411,99 @@
     .local-bar { height: 3px; background: #1a1d22; border-radius: 2px; overflow: hidden; margin-top: 4px; }
     .local-bar > i { display: block; height: 100%; width: 0; background: var(--orange); transition: width .2s; }
 
+    /* Share + history controls in the local panel */
+    .local-action { margin-left: auto; display: inline-flex; align-items: center; gap: .35rem;
+      font-family: ui-monospace, monospace; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+      padding: 4px 9px; cursor: pointer; color: #0b0c0e; background: var(--orange); border: 0;
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%); }
+    .local-action:hover { filter: brightness(1.1); }
+    .local-action:disabled { opacity: .55; cursor: default; }
+    .local-action.ghost { margin-left: 0; color: var(--orange); background: transparent; border: 1px solid var(--orange); }
+    .local-action.ghost:hover { background: rgba(255,122,24,.12); filter: none; }
+    .local-action svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
+    /* generated-link banner */
+    .local-share-out { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+      margin: 0 1.2rem .4rem; padding: .5rem .7rem; font-size: .76rem;
+      background: #0f1a12; border-left: 3px solid #39b54a; color: #cfe9d3; }
+    .local-share-out.err { background: #1a0f10; border-left-color: #c0392b; color: #ffb3a8; }
+    .local-share-out .msg { font-weight: 600; }
+    .local-share-out a { color: #7fd692; text-decoration: none; font-family: ui-monospace, monospace;
+      max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .local-share-out a:hover { text-decoration: underline; }
+    .local-share-out .exp { color: var(--muted); font-family: ui-monospace, monospace; }
+    /* history list */
+    .local-history { margin: 0 1.2rem .6rem; border: 1px solid #232830; background: #0c0f13; }
+    .local-history .lh-head { display: flex; align-items: center; gap: .5rem; padding: .45rem .7rem;
+      font-family: ui-monospace, monospace; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); border-bottom: 1px solid #232830; }
+    .local-history .lh-clear { margin-left: auto; background: transparent; border: 0; cursor: pointer;
+      color: var(--muted); font-size: .7rem; }
+    .local-history .lh-clear:hover { color: var(--orange); }
+    .local-history .lh-list { max-height: 150px; overflow-y: auto; }
+    .local-history .lh-empty { padding: .6rem .7rem; color: var(--muted); font-size: .76rem; font-style: italic; }
+    .lh-row { display: flex; align-items: center; gap: .55rem; padding: .4rem .7rem; font-size: .76rem;
+      border-bottom: 1px solid #15191f; }
+    .lh-row:last-child { border-bottom: 0; }
+    .lh-row .lh-when { color: var(--text); font-family: ui-monospace, monospace; }
+    .lh-row .lh-cnt { color: var(--muted); }
+    .lh-row .lh-exp { margin-left: auto; color: #7fd692; font-family: ui-monospace, monospace; white-space: nowrap; }
+    .lh-row .lh-exp.soon { color: #f0a020; }
+    .lh-row .lh-copy { background: transparent; border: 1px solid #2a2f37; color: #c9cfda; cursor: pointer;
+      font-size: .68rem; padding: 1px 6px; border-radius: 2px; }
+    .lh-row .lh-copy:hover { border-color: var(--orange); color: var(--orange); }
+    .lh-kind { font-size: .58rem; font-family: ui-monospace, monospace; letter-spacing: .06em;
+      text-transform: uppercase; padding: 1px 5px; border-radius: 2px; border: 1px solid; flex: 0 0 auto; }
+    .lh-kind.intel { color: var(--orange); border-color: rgba(255,122,24,.5); }
+    .lh-kind.dscan { color: #7fd0ff; border-color: rgba(127,208,255,.45); }
+    /* Shared-link history modal (opened from the header) */
+    #history-modal { position: fixed; inset: 0; z-index: 65; display: none;
+      background: rgba(5,6,8,.82); backdrop-filter: blur(3px); }
+    #history-modal.show { display: flex; align-items: center; justify-content: center; }
+    .hist-modal-panel { width: min(560px, 92vw); }
+    .hist-modal-panel .local-history { margin: 0 1.2rem 1.2rem; }
+    .hist-modal-panel .lh-list { max-height: 52vh; }
+
+    /* D-Scan analysis modal */
+    #dscan { position: fixed; inset: 0; z-index: 62; display: none;
+      background: rgba(5,6,8,.82); backdrop-filter: blur(3px); }
+    #dscan.show { display: flex; align-items: center; justify-content: center; }
+    .dscan-panel { width: min(1080px, 95vw); }
+    #dscan-sub { font-family: ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+    #dscan-share { margin-right: 1.8rem; }   /* clear the absolute close button */
+    #dscan-share-out { margin-left: 1.2rem; margin-right: 1.2rem; }
+    .ds-system { display: flex; align-items: center; gap: .6rem; margin: 0 0 1.1rem;
+      font-family: ui-monospace, monospace; }
+    .ds-system .lbl { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .ds-system .val { font-size: .95rem; font-weight: 800; letter-spacing: .1em; color: var(--orange);
+      border: 1px solid var(--orange); padding: .15rem .65rem;
+      clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+    .ds-block { margin: 0 0 1.1rem; }
+    .ds-block-h { display: flex; align-items: center; gap: .5rem; margin-bottom: .55rem;
+      font-family: ui-monospace, monospace; font-size: .76rem; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--orange); }
+    .ds-block-h .ds-badge { margin-left: auto; color: var(--muted); letter-spacing: .06em; }
+    /* ship-class stat cards */
+    .ds-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: .5rem; }
+    .ds-card { background: #0f1318; border: 1px solid var(--line); border-top: 2px solid var(--orange);
+      padding: .75rem .4rem; text-align: center;
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%); }
+    .ds-card.cap { border-top-color: #c0392b; }
+    .ds-card-n { font-family: ui-monospace, monospace; font-size: 1.55rem; font-weight: 800;
+      color: var(--orange); line-height: 1; }
+    .ds-card.cap .ds-card-n { color: #ff7a6a; }
+    .ds-card-l { font-size: .62rem; letter-spacing: .08em; text-transform: uppercase;
+      color: #aeb4bf; margin-top: .4rem; }
+    /* individual ships (icon grid) + other-entity rows: 2-column layout */
+    .ds-grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px; }
+    .ds-srow { display: flex; align-items: center; gap: .55rem; background: #0f1318; padding: 4px 9px; font-size: .82rem; }
+    .ds-srow .ds-ico { width: 26px; height: 26px; border-radius: 2px; background: #0a0b0d; flex: 0 0 auto; }
+    .ds-srow .nm { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ds-srow .cnt { margin-left: auto; font-family: ui-monospace, monospace; color: var(--orange); font-weight: 700; }
+    .ds-orow { display: flex; align-items: center; background: #0f1318; padding: 7px 11px; }
+    .ds-orow .nm { color: #c9cfda; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }
+    .ds-orow .cnt { margin-left: auto; font-family: ui-monospace, monospace; color: var(--orange); font-weight: 700; }
+    .ds-empty { color: var(--muted); font-style: italic; font-size: .8rem; padding: 1rem 0; }
+
     /* Pilot detail popup */
     #pilot { position: fixed; inset: 0; z-index: 70; display: none;
       background: rgba(5,6,8,.86); backdrop-filter: blur(3px); }
@@ -474,6 +568,11 @@
     .pilot-loading { color: var(--muted); font-size: .85rem; padding: 2rem 0; }
 
     /* Input */
+    /* Action toolbar (Nuova / Local / Modello / Storico) above the input */
+    .toolbar {
+      display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+      padding: .55rem 1rem; background: #0c0e12; border-top: 1px solid var(--line);
+    }
     footer {
       position: relative;
       display: flex; gap: .6rem; padding: .8rem 1rem;
@@ -636,18 +735,6 @@
     <span class="logo">CAPSULEERS<b>.IA</b></span>
     <span class="tag">EVE ONLINE · LOCAL AI</span>
     <span id="status" class="tag"><span class="dot"></span><span id="status-text">boot…</span></span>
-    <button id="new-chat" class="tag-btn" data-i18n-title="btnNewTitle">
-      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-      <span data-i18n="btnNew">Nuova</span>
-    </button>
-    <button id="local-btn" class="tag-btn" data-i18n-title="btnLocalTitle">
-      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg>
-      <span data-i18n="btnLocal">Local</span>
-    </button>
-    <button id="model-btn" class="tag-btn" data-i18n-title="btnModelTitle" disabled>
-      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
-      <span data-i18n="btnModel">Modello</span>
-    </button>
     <span class="spacer"></span>
     <div class="win-controls">
       <button class="wc" id="wc-info" data-i18n-title="wcInfo">&#x24D8;</button>
@@ -740,8 +827,51 @@
       <div class="local-head">
         <h2 data-i18n-html="localTitle">INTEL <b>LOCAL</b></h2>
         <span class="local-sub" id="local-sub"></span>
+        <button class="local-action" id="local-share" hidden>
+          <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+          <span id="local-share-label"></span>
+        </button>
+      </div>
+      <div class="local-share-out" id="local-share-out" hidden>
+        <span class="msg" id="local-share-msg"></span>
+        <a id="local-share-url" target="_blank" rel="noopener"></a>
+        <span class="exp" id="local-share-exp"></span>
+        <button class="local-action ghost" id="local-share-copy"></button>
       </div>
       <div class="local-body" id="local-body"></div>
+    </div>
+  </div>
+
+  <!-- Shared-link history modal (opened from the header) -->
+  <div id="history-modal">
+    <div class="local-panel hist-modal-panel">
+      <button class="local-close" id="history-close" data-i18n-title="wcClose">&#x2715;</button>
+      <div class="local-head">
+        <h2 data-i18n-html="historyModalTitle">STORICO <b>LINK</b></h2>
+      </div>
+      <div class="local-history" id="local-history"></div>
+    </div>
+  </div>
+
+  <!-- D-Scan analysis modal -->
+  <div id="dscan">
+    <div class="local-panel dscan-panel">
+      <button class="local-close" id="dscan-close" data-i18n-title="wcClose">&#x2715;</button>
+      <div class="local-head">
+        <h2 data-i18n-html="dscanTitle">D-<b>SCAN</b></h2>
+        <span class="local-sub" id="dscan-sub"></span>
+        <button class="local-action" id="dscan-share" hidden>
+          <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+          <span id="dscan-share-label"></span>
+        </button>
+      </div>
+      <div class="local-share-out" id="dscan-share-out" hidden>
+        <span class="msg" id="dscan-share-msg"></span>
+        <a id="dscan-share-url" target="_blank" rel="noopener"></a>
+        <span class="exp" id="dscan-share-exp"></span>
+        <button class="local-action ghost" id="dscan-share-copy"></button>
+      </div>
+      <div class="local-body" id="dscan-body"></div>
     </div>
   </div>
 
@@ -751,6 +881,27 @@
   </div>
 
   <div id="chat"></div>
+
+  <!-- Action toolbar: moved out of the header, sits just above the input. -->
+  <div class="toolbar">
+    <button id="new-chat" class="tag-btn" data-i18n-title="btnNewTitle">
+      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      <span data-i18n="btnNew">Nuova</span>
+    </button>
+    <button id="local-btn" class="tag-btn" data-i18n-title="btnLocalTitle">
+      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg>
+      <span data-i18n="btnLocal">Intel</span>
+    </button>
+    <button id="model-btn" class="tag-btn" data-i18n-title="btnModelTitle" disabled>
+      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+      <span data-i18n="btnModel">Modello</span>
+    </button>
+    <button id="history-btn" class="tag-btn" data-i18n-title="btnHistoryTitle">
+      <svg class="ico" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span data-i18n="btnHistory">Storico</span>
+    </button>
+  </div>
+
   <footer>
     <div id="slash" hidden></div>
     <textarea id="q" rows="2" data-i18n-ph="inputPlaceholder" disabled></textarea>
@@ -827,15 +978,17 @@
     // In-app banner when a Local is detected (reliable even if the OS toast is missed).
     const localBanner = document.getElementById("local-banner");
     const hideLocalBanner = () => { localBanner.hidden = true; };
-    capsuleers.local.onDetected(({ count }) => {
-      document.getElementById("local-banner-text").textContent = L.localDetected(count);
-      document.getElementById("local-banner-show").textContent = L.localShowIntel;
+    capsuleers.local.onDetected(({ kind, count }) => {
+      const isD = kind === "dscan";
+      document.getElementById("local-banner-text").textContent = isD ? L.dscanDetected(count) : L.localDetected(count);
+      document.getElementById("local-banner-show").textContent = isD ? L.dscanAnalyze : L.localShowIntel;
       localBanner.hidden = false;
       localBeep();
     });
     document.getElementById("local-banner-show").addEventListener("click", () => { hideLocalBanner(); capsuleers.local.confirm(); });
     document.getElementById("local-banner-x").addEventListener("click", hideLocalBanner);
-    capsuleers.local.onStart(hideLocalBanner);  // intel resolution started → hide the banner
+    capsuleers.local.onStart(hideLocalBanner);          // local intel started → hide the banner
+    capsuleers.local.onDScanStart(hideLocalBanner);     // d-scan analysis started → hide the banner
 
     const HOT_FLAGS = /^(capital|FC:|bait)/;
     function localRow(r) {
@@ -892,6 +1045,238 @@
         (danger ? L.dangerousCount(danger) : "");
       localBody.innerHTML = "";
       for (const r of res.rows) localBody.appendChild(localRow(r));
+    });
+
+    // ── Share the intel + history of generated links ─────────────────────────
+    const shareBtn = document.getElementById("local-share");
+    const shareLabel = document.getElementById("local-share-label");
+    const shareOut = document.getElementById("local-share-out");
+    const shareMsg = document.getElementById("local-share-msg");
+    const shareUrlEl = document.getElementById("local-share-url");
+    const shareExpEl = document.getElementById("local-share-exp");
+    const shareCopyBtn = document.getElementById("local-share-copy");
+    const histBtn = document.getElementById("history-btn");      // header button
+    const histPanel = document.getElementById("local-history");  // list, inside the history modal
+    const histModal = document.getElementById("history-modal");
+    // NB: labels are set lazily (in onResult, below) — `const L` is declared
+    // further down in this same script, so touching it at top-level here would
+    // hit the temporal-dead-zone and abort the rest of the script.
+
+    let _lastShareUrl = null, _histTimer = null;
+    function stopHistTimer() { if (_histTimer) { clearInterval(_histTimer); _histTimer = null; } }
+
+    // Reset the share UI for a fresh resolution; re-show the Share button once results land.
+    function hideShareUi() {
+      shareOut.hidden = true; shareOut.classList.remove("err");
+      shareBtn.hidden = true;
+    }
+    capsuleers.local.onStart(hideShareUi);
+    capsuleers.local.onResult((res) => {
+      if (res && !res.error && Array.isArray(res.rows) && res.rows.some((r) => r.id)) {
+        shareBtn.hidden = false; shareBtn.disabled = false;
+        shareLabel.textContent = L.shareBtn; shareBtn.title = L.shareTitle;
+        shareCopyBtn.textContent = L.shareCopy;
+      }
+    });
+
+    // Human "23h 59m" / "12m 30s" / "45s" remaining; null when past/invalid.
+    function fmtRemain(expMs) {
+      let s = Math.floor((Number(expMs) - Date.now()) / 1000);
+      if (!Number.isFinite(s) || s <= 0) return null;
+      const h = Math.floor(s / 3600); s -= h * 3600;
+      const m = Math.floor(s / 60); s -= m * 60;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    shareBtn.addEventListener("click", async () => {
+      shareBtn.disabled = true; shareLabel.textContent = L.sharing;
+      shareOut.hidden = true; shareOut.classList.remove("err");
+      let r;
+      try { r = await capsuleers.local.share(); } catch (e) { r = { error: e.message }; }
+      shareBtn.disabled = false; shareLabel.textContent = L.shareBtn;
+      if (!r || r.error) {
+        shareOut.classList.add("err");
+        shareMsg.textContent = L.shareErr;
+        shareUrlEl.textContent = ""; shareUrlEl.removeAttribute("href");
+        shareExpEl.textContent = ""; shareCopyBtn.hidden = true;
+        shareOut.hidden = false;
+        return;
+      }
+      _lastShareUrl = r.url;
+      shareMsg.textContent = L.shareCopied;          // "Link copiato negli appunti — pronto da condividere"
+      shareUrlEl.textContent = r.url; shareUrlEl.href = r.url;
+      const rem = fmtRemain(typeof r.expiresAt === "string" ? Date.parse(r.expiresAt) : r.expiresAt);
+      shareExpEl.textContent = rem ? L.shareExpires(rem) : "";
+      shareCopyBtn.hidden = false; shareCopyBtn.textContent = L.shareCopy;
+      shareOut.hidden = false;
+      if (histModal.classList.contains("show")) renderHistory();   // keep an open history list fresh
+    });
+
+    shareCopyBtn.addEventListener("click", () => {
+      if (!_lastShareUrl) return;
+      capsuleers.clipboard.write(_lastShareUrl);
+      shareCopyBtn.textContent = L.shareCopiedShort;
+      setTimeout(() => { shareCopyBtn.textContent = L.shareCopy; }, 1400);
+    });
+
+    function tickHistCountdowns() {
+      let anyLive = false;
+      for (const el of histPanel.querySelectorAll(".lh-exp[data-exp]")) {
+        const rem = fmtRemain(el.dataset.exp);
+        if (rem) {
+          anyLive = true; el.textContent = rem;
+          el.classList.toggle("soon", (Number(el.dataset.exp) - Date.now()) < 3600000);
+        } else { el.closest(".lh-row")?.remove(); }   // expired mid-view → drop the row
+      }
+      if (!anyLive) renderHistory();   // list emptied → re-render the empty state
+    }
+
+    async function renderHistory() {
+      let list = [];
+      try { list = await capsuleers.local.history.list(); } catch { list = []; }
+      stopHistTimer();
+      if (!list.length) {
+        histPanel.innerHTML =
+          `<div class="lh-head">${esc(L.historyTitle)}</div><div class="lh-empty">${esc(L.historyEmpty)}</div>`;
+        return;
+      }
+      const rows = list.map((e) => {
+        const when = new Date(e.createdAt).toLocaleString(SYS_LANG === "it" ? "it-IT" : "en-GB",
+          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        const kind = e.kind || "intel";
+        const count = e.count ?? e.pilotCount;   // back-compat with pre-kind entries
+        const badge = `<span class="lh-kind ${esc(kind)}">${esc(kind === "dscan" ? L.dscanShort : L.intelShort)}</span>`;
+        const label = count != null ? (kind === "dscan" ? L.objectsShort(count) : L.pilotsShort(count)) : "";
+        const cnt = label ? `<span class="lh-cnt">· ${esc(label)}</span>` : "";
+        return `<div class="lh-row" data-url="${esc(String(e.url || ""))}">` +
+          `${badge}<span class="lh-when">${esc(when)}</span>${cnt}` +
+          `<span class="lh-exp" data-exp="${e.expiresAt}"></span>` +
+          `<button class="lh-copy">${esc(L.shareCopy)}</button></div>`;
+      }).join("");
+      histPanel.innerHTML =
+        `<div class="lh-head">${esc(L.historyTitle)}<button class="lh-clear">${esc(L.historyClear)}</button></div>` +
+        `<div class="lh-list">${rows}</div>`;
+      histPanel.querySelector(".lh-clear")?.addEventListener("click", async () => {
+        try { await capsuleers.local.history.clear(); } catch { /* */ }
+        renderHistory();
+      });
+      for (const row of histPanel.querySelectorAll(".lh-row")) {
+        row.querySelector(".lh-copy")?.addEventListener("click", () => {
+          const u = row.dataset.url; if (!u) return;
+          capsuleers.clipboard.write(u);
+          const b = row.querySelector(".lh-copy");
+          b.textContent = L.shareCopiedShort; setTimeout(() => { b.textContent = L.shareCopy; }, 1400);
+        });
+      }
+      tickHistCountdowns();
+      _histTimer = setInterval(tickHistCountdowns, 1000);
+    }
+
+    function openHistory() { histModal.classList.add("show"); renderHistory(); }
+    function closeHistory() { histModal.classList.remove("show"); stopHistTimer(); }
+    histBtn.addEventListener("click", openHistory);
+    document.getElementById("history-close").addEventListener("click", closeHistory);
+    histModal.addEventListener("click", (e) => { if (e.target === histModal) closeHistory(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeHistory(); });
+
+    // ── D-Scan analysis modal ────────────────────────────────────────────────
+    const dscanOv = document.getElementById("dscan");
+    const dscanBody = document.getElementById("dscan-body");
+    const dscanSub = document.getElementById("dscan-sub");
+    function openDscan() { dscanOv.classList.add("show"); }
+    function closeDscan() { dscanOv.classList.remove("show"); }
+    document.getElementById("dscan-close").addEventListener("click", closeDscan);
+    dscanOv.addEventListener("click", (e) => { if (e.target === dscanOv) closeDscan(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDscan(); });
+
+    // D-Scan share (mirror of the local-intel share; writes into the same history).
+    const dsShareBtn = document.getElementById("dscan-share");
+    const dsShareLabel = document.getElementById("dscan-share-label");
+    const dsShareOut = document.getElementById("dscan-share-out");
+    const dsShareMsg = document.getElementById("dscan-share-msg");
+    const dsShareUrlEl = document.getElementById("dscan-share-url");
+    const dsShareExpEl = document.getElementById("dscan-share-exp");
+    const dsShareCopyBtn = document.getElementById("dscan-share-copy");
+    let _dsShareUrl = null;
+    function hideDScanShare() { dsShareOut.hidden = true; dsShareOut.classList.remove("err"); dsShareBtn.hidden = true; }
+    capsuleers.local.onDScanStart(hideDScanShare);   // reset on a fresh analysis
+    dsShareBtn.addEventListener("click", async () => {
+      dsShareBtn.disabled = true; dsShareLabel.textContent = L.sharing;
+      dsShareOut.hidden = true; dsShareOut.classList.remove("err");
+      let r;
+      try { r = await capsuleers.local.shareDScan(); } catch (e) { r = { error: e.message }; }
+      dsShareBtn.disabled = false; dsShareLabel.textContent = L.shareBtn;
+      if (!r || r.error) {
+        dsShareOut.classList.add("err");
+        dsShareMsg.textContent = L.shareErr;
+        dsShareUrlEl.textContent = ""; dsShareUrlEl.removeAttribute("href");
+        dsShareExpEl.textContent = ""; dsShareCopyBtn.hidden = true;
+        dsShareOut.hidden = false;
+        return;
+      }
+      _dsShareUrl = r.url;
+      dsShareMsg.textContent = L.shareCopied;
+      dsShareUrlEl.textContent = r.url; dsShareUrlEl.href = r.url;
+      const rem = fmtRemain(typeof r.expiresAt === "string" ? Date.parse(r.expiresAt) : r.expiresAt);
+      dsShareExpEl.textContent = rem ? L.shareExpires(rem) : "";
+      dsShareCopyBtn.hidden = false; dsShareCopyBtn.textContent = L.shareCopy;
+      dsShareOut.hidden = false;
+      if (histModal.classList.contains("show")) renderHistory();
+    });
+    dsShareCopyBtn.addEventListener("click", () => {
+      if (!_dsShareUrl) return;
+      capsuleers.clipboard.write(_dsShareUrl);
+      dsShareCopyBtn.textContent = L.shareCopiedShort;
+      setTimeout(() => { dsShareCopyBtn.textContent = L.shareCopy; }, 1400);
+    });
+
+    const dsCat = (name) => (L.dscanCats && L.dscanCats[name]) || name;
+    function dsBlock(title, badge, inner) {
+      return `<div class="ds-block"><div class="ds-block-h"><span>${esc(title)}</span>` +
+        (badge ? `<span class="ds-badge">${esc(badge)}</span>` : "") + `</div>${inner}</div>`;
+    }
+    capsuleers.local.onDScanStart(({ total }) => {
+      openDscan();
+      dscanSub.textContent = L.dscanResolving(total);
+      dscanBody.innerHTML = `<div class="local-prog">${esc(L.dscanAnalyzing)}</div>`;
+    });
+    capsuleers.local.onDScanResult((res) => {
+      openDscan();
+      if (!res || res.error) {
+        dscanSub.textContent = "";
+        dscanBody.innerHTML = `<div class="local-prog">⚠ ${esc(res?.error || L.noData)}</div>`;
+        return;
+      }
+      dscanSub.textContent = L.dscanEntities(res.total);
+      let html = "";
+      if (res.system) html += `<div class="ds-system"><span class="lbl">${esc(L.dscanSystem)}</span><span class="val">${esc(res.system)}</span></div>`;
+      // SHIP CLASSES — stat cards, threat-sorted (capitals in red).
+      if (res.shipClasses.length) {
+        const cards = res.shipClasses.map((c) =>
+          `<div class="ds-card${c.capital ? " cap" : ""}"><div class="ds-card-n">${c.count}</div><div class="ds-card-l">${esc(c.cls)}</div></div>`).join("");
+        html += dsBlock(L.dscanShipClasses, String(res.shipClasses.length), `<div class="ds-cards">${cards}</div>`);
+      }
+      // SHIPS — individual hulls with type icons, count-sorted.
+      if (res.ships.length) {
+        const rows = res.ships.map((s) =>
+          `<div class="ds-srow"><img class="ds-ico" loading="lazy" alt="" src="${IMG}/types/${s.typeId}/icon?size=64"><span class="nm">${esc(s.name)}</span><span class="cnt">×${s.count}</span></div>`).join("");
+        html += dsBlock(L.dscanShips, L.dscanUnits(res.shipUnits), `<div class="ds-grid2">${rows}</div>`);
+      }
+      // OTHER ENTITIES — non-ship categories.
+      if (res.other.length) {
+        const rows = res.other.map((o) =>
+          `<div class="ds-orow"><span class="nm">${esc(dsCat(o.name))}</span><span class="cnt">×${o.count}</span></div>`).join("");
+        html += dsBlock(L.dscanOther, "", `<div class="ds-grid2">${rows}</div>`);
+      }
+      dscanBody.innerHTML = html || `<div class="ds-empty">${esc(L.dscanNone)}</div>`;
+      // Offer sharing once we have a real breakdown.
+      if (res.total > 0) {
+        dsShareBtn.hidden = false; dsShareBtn.disabled = false;
+        dsShareLabel.textContent = L.shareBtn; dsShareBtn.title = L.shareTitle;
+        dsShareCopyBtn.textContent = L.shareCopy;
+      }
     });
 
     // --- Pilot detail popup ---
@@ -1515,7 +1900,7 @@
     const I18N = {
       it: {
         btnNew: "Nuova", btnNewTitle: "Nuova conversazione",
-        btnLocal: "Local", btnLocalTitle: "Intel Local da appunti (copia la Local da EVE)",
+        btnLocal: "Intel", btnLocalTitle: "Intel Local da appunti (copia la Local da EVE)",
         btnModel: "Modello", btnModelTitle: "Scegli il modello IA (con stima del tempo di risposta)",
         wcInfo: "Informazioni", wcMini: "Riduci a icona (always-on-top)", wcTray: "Riduci nel tray",
         wcMax: "Massimizza", wcClose: "Chiudi", miniExpand: "Click per espandere",
@@ -1541,6 +1926,28 @@
         pilotsCount: (n) => `${n} piloti`,
         resolvedOf: (r, t) => ` (risolti ${r}/${t})`,
         dangerousCount: (n) => ` · ${n} pericolosi`,
+        shareBtn: "Condividi", shareTitle: "Condividi questo intel (link valido 24h)",
+        sharing: "Creo il link…", shareErr: "Impossibile creare il link condivisibile",
+        shareCopied: "Link copiato negli appunti — pronto da condividere",
+        shareExpires: (s) => `scade tra ${s}`,
+        shareCopy: "Copia", shareCopiedShort: "Copiato!",
+        historyToggle: "Cronologia link condivisi", historyTitle: "Link condivisi",
+        historyEmpty: "Nessun link condiviso di recente.", historyClear: "Svuota",
+        pilotsShort: (n) => `${n} piloti`,
+        objectsShort: (n) => `${n} oggetti`,
+        intelShort: "Intel", dscanShort: "D-Scan",
+        btnHistory: "Storico", btnHistoryTitle: "Link condivisi (storico)",
+        historyModalTitle: "STORICO <b>LINK</b>",
+        dscanTitle: "D-<b>SCAN</b>",
+        dscanDetected: (n) => `Rilevato D-Scan di ${n} oggetti`,
+        dscanAnalyze: "Analizza",
+        dscanResolving: (n) => `analisi di ${n} oggetti…`,
+        dscanAnalyzing: "Analizzo il D-Scan…",
+        dscanSystem: "Sistema",
+        dscanShipClasses: "Classi navi", dscanShips: "Navi", dscanOther: "Altre entità",
+        dscanUnits: (n) => `${n} unità`, dscanEntities: (n) => `${n} entità`,
+        dscanNone: "nessun oggetto",
+        dscanCats: { Ships: "Navi", Structures: "Strutture", Deployables: "Deployable", Drones: "Droni", Celestials: "Celestiali", Others: "Altro" },
         loadingIntelOf: (name) => `Carico l'intel di ${name}…`,
         noData: "Nessun dato",
         statKills: "kills", statLoss: "loss", statEff: "eff",
@@ -1597,7 +2004,7 @@
       },
       en: {
         btnNew: "New", btnNewTitle: "New conversation",
-        btnLocal: "Local", btnLocalTitle: "Local intel from clipboard (copy the Local from EVE)",
+        btnLocal: "Intel", btnLocalTitle: "Local intel from clipboard (copy the Local from EVE)",
         btnModel: "Model", btnModelTitle: "Choose the AI model (with response-time estimate)",
         wcInfo: "Info", wcMini: "Shrink to icon (always-on-top)", wcTray: "Minimize to tray",
         wcMax: "Maximize", wcClose: "Close", miniExpand: "Click to expand",
@@ -1623,6 +2030,28 @@
         pilotsCount: (n) => `${n} pilots`,
         resolvedOf: (r, t) => ` (resolved ${r}/${t})`,
         dangerousCount: (n) => ` · ${n} dangerous`,
+        shareBtn: "Share", shareTitle: "Share this intel (link valid for 24h)",
+        sharing: "Creating link…", shareErr: "Couldn't create the share link",
+        shareCopied: "Link copied to clipboard — ready to share",
+        shareExpires: (s) => `expires in ${s}`,
+        shareCopy: "Copy", shareCopiedShort: "Copied!",
+        historyToggle: "Shared-link history", historyTitle: "Shared links",
+        historyEmpty: "No links shared recently.", historyClear: "Clear",
+        pilotsShort: (n) => `${n} pilots`,
+        objectsShort: (n) => `${n} objects`,
+        intelShort: "Intel", dscanShort: "D-Scan",
+        btnHistory: "History", btnHistoryTitle: "Shared links (history)",
+        historyModalTitle: "SHARED <b>LINKS</b>",
+        dscanTitle: "D-<b>SCAN</b>",
+        dscanDetected: (n) => `D-Scan detected: ${n} objects`,
+        dscanAnalyze: "Analyze",
+        dscanResolving: (n) => `analyzing ${n} objects…`,
+        dscanAnalyzing: "Analyzing the D-Scan…",
+        dscanSystem: "System",
+        dscanShipClasses: "Ship classes", dscanShips: "Ships", dscanOther: "Other entities",
+        dscanUnits: (n) => `${n} units`, dscanEntities: (n) => `${n} entities`,
+        dscanNone: "no objects",
+        dscanCats: { Ships: "Ships", Structures: "Structures", Deployables: "Deployables", Drones: "Drones", Celestials: "Celestials", Others: "Others" },
         loadingIntelOf: (name) => `Loading intel for ${name}…`,
         noData: "No data",
         statKills: "kills", statLoss: "losses", statEff: "eff",
@@ -1703,6 +2132,28 @@
     }
     applyStaticI18n();
 
+    // Enforce a minimum window width so the header chips never wrap. Measured
+    // from the header's natural content width (depends on font/locale + the live
+    // status text) and pushed to main, which clamps it to the screen.
+    function headerMinWidth() {
+      const header = document.querySelector("header");
+      if (!header) return 0;
+      const cs = getComputedStyle(header);
+      const gap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 0;
+      const padL = parseFloat(cs.paddingLeft) || 0, padR = parseFloat(cs.paddingRight) || 0;
+      const kids = Array.from(header.children);
+      let w = padL + padR + gap * Math.max(0, kids.length - 1);
+      for (const el of kids) { if (!el.classList.contains("spacer")) w += el.offsetWidth; }
+      return Math.ceil(w + 10);   // small breathing buffer
+    }
+    let _minWT = null;
+    function pushMinWidth() {
+      clearTimeout(_minWT);
+      _minWT = setTimeout(() => { const w = headerMinWidth(); if (w > 200) capsuleers.win.setMinWidth(w); }, 120);
+    }
+    pushMinWidth();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(pushMinWidth);
+
     function showWelcome() {
       const b = bubble("bot");
       const md = document.createElement("div");
@@ -1722,10 +2173,11 @@
       if (s.k === "ready") return L.stReady(s);
       return "";
     }
-    capsuleers.onStatus((s) => { statusText.textContent = formatStatus(s); });
+    capsuleers.onStatus((s) => { statusText.textContent = formatStatus(s); pushMinWidth(); });
     capsuleers.onReady((info) => {
       statusText.textContent = L.readyLine(info.count.toLocaleString(), (info.gpu || "cpu").toUpperCase());
       q.disabled = false; send.disabled = false; q.focus();
+      pushMinWidth();
     });
 
     let current = null, body = null;

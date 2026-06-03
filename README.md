@@ -52,8 +52,13 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   most expensive kills, **killmail** story/forensics from a zKillboard link, plus
   **entity overview/timeline/recent-kills**, **ships used**, **top rankings**
   (favourite hulls/systems/regions, who they kill/die to) and **global/system activity pulse**.
-- **Local intel from the clipboard** — copy the Local in EVE (Ctrl+A, Ctrl+C) and the
-  app shows who's around it, flagging the dangerous ones.
+- **Clipboard intel (Local + D-Scan)** — with the **Intel** watcher on, copy a Local
+  (Ctrl+A, Ctrl+C) and the app shows who's around it, flagging the dangerous ones; copy a
+  **directional scan** and it recognises it too and gives an instant **composition
+  breakdown** — ship classes, per-hull counts, detected system and other entities —
+  classified **fully offline** from the bundled `eve-fit-engine` SDE. Either result can be
+  **shared**: one click pushes it to **capsuleers.app**, copies a 24h link to your
+  clipboard and keeps it in a local history with an expiry countdown.
 - **Thera/Turnur wormhole connections** (EVE-Scout) — "the Thera connection closest to
   Jita", with the **entry and exit signatures** and jump distance.
 - **Model management** — pick/download/delete chat models from an **updatable catalog**,

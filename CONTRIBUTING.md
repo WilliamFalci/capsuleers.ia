@@ -120,8 +120,11 @@ Run from `desktop/` (`npm run <script>`):
 - Live-data: [`prices.mjs`](desktop/src/prices.mjs) (EVE Ref), [`intel.mjs`](desktop/src/intel.mjs)
   (eve-kill killboard), [`esi.mjs`](desktop/src/esi.mjs) (ESI), [`eve-scout.mjs`](desktop/src/eve-scout.mjs)
   (Thera/Turnur), [`mcp.mjs`](desktop/src/mcp.mjs) + [`mcp-intel.mjs`](desktop/src/mcp-intel.mjs)
-  (eve-kill MCP), [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) (Local intel),
-  [`links.mjs`](desktop/src/links.mjs) (linkify + language detection).
+  (eve-kill MCP), [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) (clipboard scan
+  detection: Local roster **or** D-Scan), [`intel-history.mjs`](desktop/src/intel-history.mjs)
+  (persisted share-link history), [`links.mjs`](desktop/src/links.mjs) (linkify + language detection).
+  Both clipboard scans (Local intel + offline D-Scan composition) can be shared to
+  capsuleers.app for a 24h link (`sharePilotIntel`/`shareDScan` in `intel.mjs`).
 - [`assets-manifest.json`](desktop/src/assets-manifest.json) — the index/data files the app downloads
   on first run (size + sha256).
 - [`models-catalog.json`](desktop/src/models-catalog.json) — the user-selectable chat-model catalog.
@@ -207,6 +210,13 @@ Fit stats are **not** hand-rolled here — [`fit.mjs`](desktop/src/fit.mjs) dele
 assertions / 23 fixtures, with its own version-pinned SDE bundle). The numbers are authoritative and
 fully offline. `fit.mjs` only parses module **names** (for prices + the LLM listing) and renders the
 engine's `DerivedStats` into the Italian context block.
+
+The bundled SDE is also reused **outside fitting**: [`intel.mjs`](desktop/src/intel.mjs)
+`analyzeDScan()` calls `loadBundledDataset()` and walks `getType(typeID)`→`groups`→`categories`
+to classify a D-Scan offline (ship class + category). Caveat — the engine bundles only
+**fittable** types, so celestials/most deployables don't resolve (they bucket as "Others");
+ship classes resolve perfectly. The capsuleers.app D-Scan share recomputes the full split
+(celestials included) server-side via ESI.
 
 `fit.mjs` also exports `describeDoctrineFit(eft)` for the **doctrine specs** flow (a doctrine fit pulled
 from a corp/alliance killmail via the eve-kill MCP — see CLAUDE.md). It reuses the same engine math but

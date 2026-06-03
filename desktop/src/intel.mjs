@@ -3,6 +3,7 @@
 import { priceByTypeId } from "./prices.mjs";
 import { dossierExtra, characterCard } from "./mcp-intel.mjs";
 import { USER_AGENT as UA } from "./user-agent.mjs";
+import { loadBundledDataset } from "eve-fit-engine/node";
 
 const BASE = "https://api.eve-kill.com";
 
@@ -346,6 +347,140 @@ export async function localIntel(names, { cap = 100, concurrency = 4, onProgress
 
   rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   return { rows, total, resolved: target.length, capped };
+}
+
+// ── Share a Local intel snapshot via capsuleers.app ─────────────────────────
+// Sends the resolved character IDs to the site, which recomputes the canonical
+// pilot-intel payload server-side (so the shared page shows the same colour
+// tags / playstyle as a native scan — IA's local rows lack the
+// /characters/analyze data) and returns a 24h share link. Called from the main
+// process: the request carries no Origin header, so it passes the site's API
+// origin guard. CAPSULEERS_SITE overrides the host for local dev.
+const SITE_BASE = process.env.CAPSULEERS_SITE || "https://capsuleers.app";
+
+export async function sharePilotIntel(characterIds) {
+  const ids = [...new Set((characterIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) throw new Error("no character IDs to share");
+  const r = await fetch(`${SITE_BASE}/api/pilot-intel/shares/from-scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": UA },
+    body: JSON.stringify({ character_ids: ids }),
+  });
+  if (!r.ok) throw new Error(`share HTTP ${r.status}`);
+  const d = await r.json();   // { id, url, expires_at, pilot_count }
+  return { id: d.id, url: d.url, expiresAt: d.expires_at, pilotCount: d.pilot_count ?? ids.length };
+}
+
+// Share a D-Scan via capsuleers.site. Sends the raw rows; the site recomputes
+// the full resolution server-side (typeID→class via ESI, including celestials
+// the offline SDE can't classify) and returns a 24h link to the scan view page.
+// Same anonymous, no-Origin POST as sharePilotIntel.
+export async function shareDScan(rows) {
+  const clean = (rows || [])
+    .map((r) => ({ typeId: Number(r.typeId), name: r.name || "", group: r.group || "", distance: r.distance || "" }))
+    .filter((r) => Number.isInteger(r.typeId) && r.typeId > 0);
+  if (!clean.length) throw new Error("no D-Scan rows to share");
+  const r = await fetch(`${SITE_BASE}/api/scans/from-dscan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": UA },
+    body: JSON.stringify({ rows: clean }),
+  });
+  if (!r.ok) throw new Error(`share HTTP ${r.status}`);
+  const d = await r.json();   // { id, url, expires_at }
+  return { id: d.id, url: d.url, expiresAt: d.expires_at, objectCount: clean.length };
+}
+
+// ── D-Scan analysis (offline, via the bundled eve-fit-engine SDE) ────────────
+// A directional-scan paste lists OBJECTS, not pilots: typeID + distance. We
+// resolve each typeID to its ship class / category from the version-pinned SDE
+// the fit engine already ships (no ESI, language-independent), then build a
+// threat-sorted composition split into on-grid / off-grid.
+const SHIP_CLASS_WEIGHTS = {
+  Capsule: 1, Shuttle: 2, Corvette: 5, Frigate: 10, Interceptor: 15, "Assault Frigate": 18,
+  "Electronic Attack Ship": 16, "Expedition Frigate": 17, "Logistics Frigate": 19,
+  Destroyer: 20, "Command Destroyer": 25, "Covert Ops": 28, "Stealth Bomber": 27,
+  "Recon Ship": 33, Logistics: 34, "Heavy Assault Cruiser": 36, "Heavy Interdiction Cruiser": 38,
+  "Interdictor": 26, Cruiser: 30, "Strategic Cruiser": 32,
+  Hauler: 35, Industrial: 45, "Mining Barge": 50, Exhumer: 55, "Transport Ship": 60,
+  "Deep Space Transport": 61, "Blockade Runner": 62, Battlecruiser: 65, "Attack Battlecruiser": 70,
+  "Combat Battlecruiser": 75, "Command Ship": 78, "Industrial Command Ship": 80, Battleship: 85,
+  "Black Ops": 86, Marauder: 90, Freighter: 100, "Jump Freighter": 102, Carrier: 110,
+  "Capital Industrial Ship": 115, Dreadnought: 120, "Lancer Dreadnought": 122, "Force Auxiliary": 130,
+  Supercarrier: 140, Titan: 150,
+};
+const getShipRank = (cls) => SHIP_CLASS_WEIGHTS[cls] || 0;
+const ROMAN_RE = /^[IVXLCDM]+$/;   // celestial position numeral (Hek VIII, Hek I …)
+const CAPITAL_CLASSES = new Set(["Carrier", "Capital Industrial Ship", "Dreadnought", "Lancer Dreadnought", "Force Auxiliary", "Supercarrier", "Titan"]);
+
+// EVE category_id → display bucket (same split as capsuleers.site's scan tool).
+function dscanCategory(categoryId) {
+  if (categoryId === 6) return "Ships";
+  if ([3, 15, 23, 40, 46, 65].includes(categoryId)) return "Structures";
+  if (categoryId === 2) return "Celestials";
+  if (categoryId === 22) return "Deployables";
+  if (categoryId === 18 || categoryId === 87) return "Drones";
+  return "Others";
+}
+let _dsDataset = null;
+async function fitDataset() { return (_dsDataset ||= await loadBundledDataset()); }
+
+/**
+ * Analyzes parsed D-Scan rows ({ typeId, name, group, distance }) into a flat
+ * composition (no on-grid / off-grid split). Returns:
+ *   total       — every detected object
+ *   shipUnits   — total ship hulls
+ *   shipClasses — [{ cls, count, weight, capital }] threat-sorted (for the cards)
+ *   ships       — [{ typeId, name, count }] per hull, count-sorted (icon grid)
+ *   other       — [{ name, count }] non-ship categories, count-sorted
+ */
+export async function analyzeDScan(rows) {
+  const ds = await fitDataset();
+  const classMap = new Map();   // ship class name -> count
+  const shipMap = new Map();    // typeId -> { typeId, name, count }
+  const otherMap = new Map();   // category bucket -> count
+  const sysVotes = new Map();   // first-token of celestial names -> count (system inference)
+  let shipUnits = 0;
+
+  for (const r of rows) {
+    const t = ds.getType(Number(r.typeId));
+    const g = t && ds.groups.get(t.groupID);
+    const cat = g ? dscanCategory(g.categoryID) : "Others";
+    if (cat === "Ships") {
+      const cls = g?.name || "Unknown";
+      classMap.set(cls, (classMap.get(cls) || 0) + 1);
+      const key = Number(r.typeId);
+      const s = shipMap.get(key) || { typeId: key, name: t?.name || r.name || `#${key}`, count: 0 };
+      s.count++; shipMap.set(key, s);
+      shipUnits++;
+    } else {
+      otherMap.set(cat, (otherMap.get(cat) || 0) + 1);
+      // System name: celestials are named "<System> <ROMAN> - …" (planets,
+      // moons, belts, stations) or "<System> - Star". Vote the first token ONLY
+      // when the SECOND token is a Roman numeral or a dash — that pattern is
+      // unique to celestials + system-prefixed structures, so it excludes the
+      // noise that otherwise dominates (mission wrecks like "Mercenary Rookie
+      // Wreck", containers, POS batteries, drones). Language-independent: the
+      // system name itself isn't localized, and we never match "Moon"/"Star".
+      const toks = String(r.name || "").trim().split(/\s+/);
+      if (toks.length >= 2 && (ROMAN_RE.test(toks[1]) || toks[1] === "-")) {
+        sysVotes.set(toks[0], (sysVotes.get(toks[0]) || 0) + 1);
+      }
+    }
+  }
+
+  // Pick the majority token, but only trust it when several celestials agree
+  // (a ships-only d-scan has no celestials → we can't know the system).
+  let system = null, bestVotes = 0;
+  for (const [tok, n] of sysVotes) if (n > bestVotes) { bestVotes = n; system = tok; }
+  if (bestVotes < 3) system = null;
+
+  const shipClasses = [...classMap.entries()]
+    .map(([cls, count]) => ({ cls, count, weight: getShipRank(cls), capital: CAPITAL_CLASSES.has(cls) }))
+    .sort((a, b) => b.weight - a.weight || b.count - a.count);
+  const ships = [...shipMap.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const other = [...otherMap.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+
+  return { total: rows.length, system, shipUnits, shipClasses, ships, other };
 }
 
 /**

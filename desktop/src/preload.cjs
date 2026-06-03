@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld("capsuleers", {
     close: () => ipcRenderer.send("win:close"),
     mini: () => ipcRenderer.send("win:mini"),
     restore: () => ipcRenderer.send("win:restore"),
+    setMinWidth: (w) => ipcRenderer.send("win:set-min-width", w),
     onState: (cb) => ipcRenderer.on("win:state", (_e, max) => cb(max)),
     onMiniState: (cb) => ipcRenderer.on("win:mini-state", (_e, mini) => cb(mini)),
   },
@@ -48,9 +49,19 @@ contextBridge.exposeInMainWorld("capsuleers", {
     scan: () => ipcRenderer.send("local:scan"),
     confirm: () => ipcRenderer.send("local:confirm"),
     detail: (who) => ipcRenderer.invoke("local:detail", who),
+    // Share the last resolved Local intel → returns { id, url, expiresAt, pilotCount, copied } or { error }.
+    share: () => ipcRenderer.invoke("local:share"),
+    history: {
+      list: () => ipcRenderer.invoke("local:history:list"),
+      clear: () => ipcRenderer.invoke("local:history:clear"),
+    },
     onDetected: (cb) => ipcRenderer.on("local:detected", (_e, p) => cb(p)),
     onStart: (cb) => ipcRenderer.on("local:start", (_e, p) => cb(p)),
     onProgress: (cb) => ipcRenderer.on("local:progress", (_e, p) => cb(p)),
     onResult: (cb) => ipcRenderer.on("local:result", (_e, p) => cb(p)),
+    // D-Scan analysis (offline composition breakdown)
+    onDScanStart: (cb) => ipcRenderer.on("dscan:start", (_e, p) => cb(p)),
+    onDScanResult: (cb) => ipcRenderer.on("dscan:result", (_e, p) => cb(p)),
+    shareDScan: () => ipcRenderer.invoke("dscan:share"),
   },
 });

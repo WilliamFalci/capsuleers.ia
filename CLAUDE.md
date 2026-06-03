@@ -71,7 +71,17 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
 ### Live-data feature modules (`desktop/src/`)
 
 - [`prices.mjs`](desktop/src/prices.mjs) — EVE Ref reference prices (`priceByName`, `isKnownType`).
-- [`intel.mjs`](desktop/src/intel.mjs) — eve-kill killboard pilot/corp/alliance intel.
+- [`intel.mjs`](desktop/src/intel.mjs) — eve-kill killboard pilot/corp/alliance intel; plus
+  the clipboard-scan paths: `localIntel()` (per-pilot eve-kill intel for a Local roster),
+  `analyzeDScan()` (offline D-Scan composition via the bundled `eve-fit-engine` SDE —
+  `dataset.getType`→`groups`→`categories`; the SDE only bundles **fittable** types so
+  celestials/deployables fall into "Others", but ship classes resolve perfectly + the
+  system is inferred from celestial names), and the share helpers `sharePilotIntel()` /
+  `shareDScan()` that POST to capsuleers.app (`/api/pilot-intel/shares/from-scan`,
+  `/api/scans/from-dscan`) and return a 24h link.
+- [`intel-history.mjs`](desktop/src/intel-history.mjs) — disk-persisted history of generated
+  share links (`{userData}/intel-share-history.json`), `kind: 'intel'|'dscan'`, pruned past
+  the 24h expiry on read. Surfaced in the header "Storico" modal with a live countdown.
 - [`esi.mjs`](desktop/src/esi.mjs) — official ESI (corp summary, character affiliation, system activity).
 - [`eve-scout.mjs`](desktop/src/eve-scout.mjs) — Thera/Turnur wormhole connections.
 - [`eveworkbench.mjs`](desktop/src/eveworkbench.mjs) — EVE Workbench community-fit **search by need**
@@ -98,7 +108,11 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
     directive in [`engine.mjs`](desktop/src/engine.mjs). `resetConversation()` clears `lastDoctrine`
     via the exported `resetDoctrineMemory()`. The specs intent (#5-bis) is gated on `lastDoctrine`
     and must precede the doctrine-list intent (#5).
-- [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) — Local-chat intel from the clipboard.
+- [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) — opt-in clipboard watcher.
+  `detectClipboard()` discriminates a **Local roster** (`isLocalList`) from a **D-Scan**
+  (`isDScan` — ≥4 tab cols, numeric typeID col0, distance-like last col), returning a
+  discriminated `{ kind: 'local'|'dscan', … }` payload. Ignores content already present
+  when enabled (so re-copying the same scan is a no-op).
 - [`links.mjs`](desktop/src/links.mjs) — `linkify` + `detectLang`.
 
 **Outbound User-Agent** — every external request (in both halves) must identify the app via a single
