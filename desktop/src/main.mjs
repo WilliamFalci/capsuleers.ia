@@ -1,9 +1,9 @@
 // Electron main process: opens the window, initializes the RAG engine,
 // and routes questions from the renderer (IPC) with streaming responses.
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, Notification, dialog, screen, clipboard } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, Notification, dialog, screen, clipboard, session } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState, deleteModelFile } from "./engine.mjs";
 import { localIntel, characterDetail, sharePilotIntel, analyzeDScan, shareDScan } from "./intel.mjs";
 import { listEntries as listShareHistory, addEntry as addShareHistory, clearEntries as clearShareHistory } from "./intel-history.mjs";
@@ -577,6 +577,39 @@ ipcMain.on("win:set-min-width", (_e, w) => {
 });
 ipcMain.on("reset", () => resetConversation());                // new conversation
 ipcMain.handle("clipboard:write", (_e, text) => { clipboard.writeText(String(text ?? "")); return true; });
+
+// Full data wipe: remove EVERYTHING this app wrote to disk (downloaded models, RAG
+// index, Electron caches, settings) plus the electron-updater download cache, then
+// quit. On Linux the AppImage format has NO uninstall hook, so this in-app action is
+// the only way to reclaim the ~1 GB+ of userData before deleting the AppImage; on
+// Windows the NSIS uninstaller does the same automatically (build/installer.nsh).
+ipcMain.handle("data:wipe-all", async () => {
+  // 1. Stop any in-flight native work / downloads so model files aren't held open.
+  try { setupAbort?.abort(); } catch { /* */ }
+  try { modelDlAbort?.abort(); } catch { /* */ }
+  try { await shutdown(); } catch { /* */ }
+  // 2. Let Chromium release its own managed storage (cookies / leveldb / cache) — on
+  //    Windows those files can't be deleted while the process holds them open.
+  try { await session.defaultSession.clearCache(); } catch { /* */ }
+  try { await session.defaultSession.clearStorageData(); } catch { /* */ }
+  // 3. Remove userData (models + data + caches + settings) and the updater cache.
+  //    Best-effort with retries to ride out the brief Windows file-lock window.
+  const userData = app.getPath("userData");
+  const folder = path.basename(userData);                 // "capsuleers-ia-desktop"
+  const home = app.getPath("home");
+  const updaterCache = process.platform === "win32"
+    ? path.join(process.env.LOCALAPPDATA || path.join(userData, "..", "..", "Local"), `${folder}-updater`)
+    : process.platform === "darwin"
+      ? path.join(home, "Library", "Caches", `${folder}-updater`)
+      : path.join(process.env.XDG_CACHE_HOME || path.join(home, ".cache"), `${folder}-updater`);
+  for (const dir of [userData, updaterCache]) {
+    try { await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 120 }); } catch { /* */ }
+  }
+  // 4. Quit. Bypass the before-quit guard (the engine was already shut down above).
+  shuttingDown = true;
+  app.quit();
+  return true;
+});
 
 // Local intel from clipboard: the renderer can drive the toggle and the scan,
 // and re-confirm the last detected Local.

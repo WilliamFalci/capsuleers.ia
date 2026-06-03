@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld("capsuleers", {
   },
   // Write text to the OS clipboard (used by the "copy fit" button on EFT blocks).
   clipboard: { write: (text) => ipcRenderer.invoke("clipboard:write", text) },
+  // App data lifecycle: wipe ALL user data (downloaded models, RAG index, caches,
+  // settings) and quit. The only way to fully uninstall data on Linux (AppImage has
+  // no uninstall hook) and a manual full-purge on Windows/macOS.
+  data: { wipeAll: () => ipcRenderer.invoke("data:wipe-all") },
   onToken: (cb) => ipcRenderer.on("token", (_e, t) => cb(t)),
   onStatus: (cb) => ipcRenderer.on("status", (_e, s) => cb(s)),
   onReady: (cb) => ipcRenderer.on("ready", (_e, info) => cb(info)),
