@@ -13,6 +13,15 @@ import { loadManifest, loadEffectiveManifest, assetStatus, firstRunTasks, downlo
 import electronUpdater from "electron-updater";
 const { autoUpdater } = electronUpdater;
 
+// A broken stdout/stderr pipe must NEVER crash the GUI. node-llama-cpp logs verbosely
+// to the console during model load; when the AppImage is launched without an attached
+// terminal (or the parent pipe closes), those async writes fail with EPIPE — and with
+// no 'error' listener that becomes an uncaughtException, popping Electron's crash dialog
+// ("A JavaScript error occurred in the main process"). stdio write errors are never
+// actionable in a packaged GUI app, so swallow them.
+process.stdout.on("error", () => {});
+process.stderr.on("error", () => {});
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, "..", "assets");
 let win, tray;
