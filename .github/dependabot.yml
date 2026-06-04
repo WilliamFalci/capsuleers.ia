@@ -1,0 +1,21 @@
+# Keep eve-fit-engine pinned to the latest published version automatically.
+# The npm project lives in desktop/, so Dependabot points at /desktop. It bumps
+# both desktop/package.json and desktop/package-lock.json (versioning-strategy:
+# increase) so a reproducible install actually picks the new version.
+# Patch/minor bumps are auto-merged by .github/workflows/dependabot-automerge.yml;
+# a major (breaking) bump opens a PR and waits for a human.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/desktop"
+    schedule:
+      interval: "daily"
+    versioning-strategy: increase
+    open-pull-requests-limit: 5
+    # Only eve-fit-engine — this is NOT a blanket dependency-update setup.
+    allow:
+      - dependency-name: "eve-fit-engine"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"

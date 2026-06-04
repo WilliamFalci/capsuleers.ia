@@ -1,0 +1,37 @@
+name: Dependabot auto-merge
+
+# Auto-merge Dependabot PRs that bump eve-fit-engine (patch or minor only).
+# A major bump (potential breaking API change) is intentionally NOT auto-merged
+# and is left as an open PR for manual review.
+#
+# Requires the repository setting "Allow auto-merge" to be enabled
+# (Settings -> General -> Pull Requests). This repo has no PR-time CI
+# (release.yml only runs on tags), so an auto-merge here lands immediately on
+# main without a build gate — that matches the "always latest, zero-touch" goal.
+# eve-fit-engine is parity-gated before it is ever published, and only its
+# patch/minor versions are auto-merged here.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Enable auto-merge (eve-fit-engine, patch/minor)
+        if: >-
+          ${{ steps.meta.outputs.dependency-names == 'eve-fit-engine'
+              && (steps.meta.outputs.update-type == 'version-update:semver-patch'
+                  || steps.meta.outputs.update-type == 'version-update:semver-minor') }}
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
