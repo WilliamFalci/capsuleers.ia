@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.3.9",
-    "eve-fit-engine": "^0.1.4",
+    "eve-fit-engine": "^0.1.5",
     "node-llama-cpp": "^3.18.1"
   },
   "devDependencies": {
