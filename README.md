@@ -100,18 +100,25 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   Qdrant/Ollama, no Python at runtime.
 - **Data factory** ([`ingestion/`](ingestion/)): a Python pipeline run **offline** (by
   whoever builds the app) to generate the knowledge base and keep it up to date via daily
-  incremental jobs (SDE, EVE University wiki, eve-survival missions, Anoikis wormhole).
+  incremental jobs (SDE, MediaWiki wikis, eve-survival missions, Anoikis wormhole).
 
 ## Data sources
 
 - **Official SDE** (JSON Lines) — skills, ships, modules, dogma, universe, industry,
   blueprints, sites/anomalies, lore. Authoritative source.
 - **EVE University Wiki** (**CC BY-NC-SA 4.0**, non-commercial) — mechanics, terminology, mining, exploration.
+- **EVE Sister Core Scanner Probe Wiki** (Fandom, DE — CC BY-SA) — exploration sites: anomalies, signatures, relic & data sites.
+- **EVE Wiki** (`eve.fandom.com`, EN — CC BY-SA) — general EVE encyclopedia.
 - **eve-survival.org** — PVE mission guides *(license not explicitly stated: see the note in
   [`ingestion`](ingestion/capsuleers_ingestion/missions/eve_survival.py))*.
+- **Riley Entertainment** — combat-site ship fits, COSMOS guides, hacking/relic/data loot stats *(no explicit licence → opt-in `--riley`, never part of `--all`)*.
 - **Anoikis** (wormhole effects/statics) · **EVE Ref** (live prices) · **ESI** (official
   live data) · **eve-kill.com** (killboard + [MCP](https://mcp.eve-kill.com/mcp) analytics) ·
   **EVE-Scout** (Thera/Turnur connections).
+
+> Adding another MediaWiki = append a `WikiSource` to
+> [`ingestion/.../wiki/sources.py`](ingestion/capsuleers_ingestion/wiki/sources.py); it is picked up by
+> both the full crawl (`--wiki`) and the daily incremental timer automatically.
 
 ## Build from source
 

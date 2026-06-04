@@ -14,6 +14,7 @@ import time
 from collections.abc import Iterator
 
 from .api import api_get
+from .sources import WikiSource
 
 # How far back to look on the very first run (no saved state). Kept modest: a cold
 # start should do a full rebuild via run.py, not a giant recentchanges sweep.
@@ -26,6 +27,7 @@ def _iso_days_ago(days: int) -> str:
 
 
 def changed_titles_since(
+    source: WikiSource,
     since_ts: str | None,
     *,
     include_bots: bool = False,
@@ -55,7 +57,7 @@ def changed_titles_since(
             params["rcshow"] = rcshow
         if rccontinue:
             params["rccontinue"] = rccontinue
-        data = api_get(params)
+        data = api_get(source, params)
         changes = data.get("query", {}).get("recentchanges", [])
         for c in changes:
             if newest is None:
@@ -71,9 +73,9 @@ def changed_titles_since(
     return titles, newest
 
 
-def _iter_recentchanges(limit: int = 20) -> Iterator[dict]:
+def _iter_recentchanges(source: WikiSource, limit: int = 20) -> Iterator[dict]:
     """Debug helper: yields the most recent N changes (for --check output)."""
-    data = api_get({
+    data = api_get(source, {
         "action": "query", "list": "recentchanges", "rcnamespace": "0",
         "rctype": "edit|new|log", "rcshow": "!bot",
         "rcprop": "title|timestamp|ids", "rclimit": str(limit), "format": "json",

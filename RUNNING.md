@@ -60,14 +60,32 @@ python -m capsuleers_ingestion.run --sde --dump data/docs_sde.jsonl
 #     export — the desktop app bundles its own SDE via the eve-fit-engine package)
 python -m capsuleers_ingestion.run --names-index data/names_index.json
 
-# (c) EVE University Wiki — ~40 min. IMPORTANT for missions, anomalies,
-#     wormholes, exploration, incursions: the discursive explanations of these
-#     topics come from here (119+ dedicated pages).
-python -m capsuleers_ingestion.run --wiki --dump data/docs_wiki.jsonl
+# (c) Wikis (MediaWiki) — ~40 min for EVE Uni alone. IMPORTANT for missions,
+#     anomalies, wormholes, exploration, incursions: the discursive explanations
+#     of these topics come from here. `--wiki` crawls EVERY registered source
+#     (EVE University + the two Fandom wikis — see wiki/sources.py); restrict with
+#     `--wiki-source eveuni|sistersprobe|evefandom` and dump per source.
+python -m capsuleers_ingestion.run --wiki --wiki-source eveuni       --dump data/docs_wiki.jsonl
+python -m capsuleers_ingestion.run --wiki --wiki-source sistersprobe --dump data/docs_sistersprobe.jsonl  # Fandom DE, exploration sites
+python -m capsuleers_ingestion.run --wiki --wiki-source evefandom    --dump data/docs_evefandom.jsonl     # Fandom EN, general
+
+# (c-bis, optional) Riley Entertainment static guides — opt-in (no explicit licence,
+#     NOT part of --all). Exclude it if you redistribute the index.
+python -m capsuleers_ingestion.run --riley --dump data/docs_riley.jsonl
 
 # (d) Index into Qdrant (requires Ollama+Qdrant running). ~30-45 min on CPU.
+#     from-dump uses+populates data/embed_cache.sqlite, so re-runs only embed new text.
 python -m capsuleers_ingestion.run --from-dump data/docs_sde.jsonl
-python -m capsuleers_ingestion.run --from-dump data/docs_wiki.jsonl   # if you did (c)
+python -m capsuleers_ingestion.run --from-dump data/docs_wiki.jsonl          # if you did (c)
+python -m capsuleers_ingestion.run --from-dump data/docs_sistersprobe.jsonl  # ~1.9k chunks
+python -m capsuleers_ingestion.run --from-dump data/docs_evefandom.jsonl     # ~3.4k chunks
+python -m capsuleers_ingestion.run --from-dump data/docs_riley.jsonl         # if you did (c-bis)
+```
+
+Keep a wiki fresh between full rebuilds (re-indexes only changed pages, all wikis):
+```bash
+python -m capsuleers_ingestion.wiki_update --check   # how many pages changed?
+python -m capsuleers_ingestion.wiki_update           # apply (per-source watermark)
 ```
 
 Indexing progress:

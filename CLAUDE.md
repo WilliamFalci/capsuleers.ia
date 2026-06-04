@@ -42,7 +42,7 @@ npm run build-index    # (re)build the vector index from a dump
 cd ingestion
 python3 -m venv .venv && . .venv/bin/activate && pip install -e .
 python -m capsuleers_ingestion.run --sde   --dump data/docs_sde.jsonl   # SDE → chunks
-python -m capsuleers_ingestion.run --wiki  --dump data/docs_wiki.jsonl  # EVE Univ wiki (~40 min)
+python -m capsuleers_ingestion.run --wiki  --dump data/docs_wiki.jsonl  # all MediaWiki sources (~40 min)
 python -m capsuleers_ingestion.run --names-index data/names_index.json  # name→typeID (price lookups)
 python -m capsuleers_ingestion.run --from-dump data/docs_sde.jsonl      # index into Qdrant
 python -m capsuleers_ingestion.update                                   # daily SDE build check + zero-downtime re-index
@@ -199,7 +199,7 @@ Imports from `eve-fit-engine/node`: `loadBundledDataset`, `buildAllVSkillProfile
 (daily SDE build-number check + zero-downtime Qdrant alias swap), plus three **incremental**
 auto-updaters that re-index changed docs **in place** on the live collection (NOT via update.py's
 SDE-only swap, which would drop wiki/missions):
-- `wiki_update.py` — `recentchanges` API watermark (`wiki_state.json`) → re-index changed pages.
+- `wiki_update.py` — `recentchanges` API watermark (per-source: `wiki_state.json` for EVE Uni, `wiki_state_<key>.json` for the others) → re-index changed pages across every wiki in [`wiki/sources.py`](ingestion/capsuleers_ingestion/wiki/sources.py) (EVE University + EVE Sister Core Scanner Probe Fandom wiki).
 - `missions_update.py` — content-hash diff (`missions_state.json`) for eve-survival (Wikka wiki,
   no API) → re-index changed / drop removed.
 - `wormhole_update.py` — `wormhole.json` file-hash (`wormhole_state.json`) → re-index only the
@@ -216,7 +216,9 @@ publish step live in [`ops/`](ops/) (`update.sh`, `wiki-update.sh`, `missions-up
 ## Data sources & licensing
 
 Official SDE (authoritative), EVE University Wiki (**CC BY-NC-SA 4.0** → the knowledge index is
-effectively **non-commercial**), eve-survival (missions), Anoikis (wormhole effects/statics), EVE Ref
+effectively **non-commercial**), EVE Sister Core Scanner Probe Fandom wiki (CC BY-SA, German — exploration
+sites), EVE Wiki on Fandom (CC BY-SA, EN), Riley Entertainment guides (no explicit licence — opt-in
+`--riley`, never in `--all`), eve-survival (missions), Anoikis (wormhole effects/statics), EVE Ref
 (prices), ESI, eve-kill (killboard + MCP), EVE-Scout. Source code is MIT; GGUF models keep their own
 licenses and are not redistributed. See [`THIRD_PARTY.md`](THIRD_PARTY.md). Unofficial, non-commercial
 fan project — not affiliated with Fenris Creations.

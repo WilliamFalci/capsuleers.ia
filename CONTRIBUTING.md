@@ -152,8 +152,9 @@ JSONL; *(2)* embed + index into Qdrant (needs Ollama + Qdrant running — use [`
 |---|---|
 | `--all` | SDE + Wiki + missions. |
 | `--sde` | Parse the official SDE only (downloads it if `--sde-dir` not given; also pulls Anoikis wormhole data best-effort). |
-| `--wiki` / `--wiki-limit N` | Scrape the EVE University Wiki (rate-limited). `--wiki-limit` caps pages for a quick test. |
+| `--wiki` / `--wiki-source KEY` / `--wiki-limit N` | Scrape every registered MediaWiki (EVE University + EVE Sister Core Scanner Probe Fandom wiki — see [`wiki/sources.py`](ingestion/capsuleers_ingestion/wiki/sources.py)), rate-limited. `--wiki-source eveuni\|sistersprobe` restricts to one; `--wiki-limit` caps pages **per source** for a quick test. |
 | `--missions` / `--missions-limit N` | Scrape eve-survival mission guides. |
+| `--riley` / `--riley-limit N` | Scrape Riley Entertainment's static EVE guides ([`web/riley.py`](ingestion/capsuleers_ingestion/web/riley.py)). **Opt-in** — no explicit licence, so it is **never** part of `--all`. |
 | `--sde-dir DIR` | Use an already-extracted SDE JSONL dir (skip the download). |
 | `--dump FILE` | Write chunks to JSONL instead of indexing — **no infra needed**. |
 | `--from-dump FILE` | Index chunks from a JSONL dump (**needs Qdrant + Ollama**); also populates the embed cache. |
@@ -184,9 +185,12 @@ python -m capsuleers_ingestion.update --force    # rebuild regardless
 ### Source parsers
 
 [`sde/`](ingestion/capsuleers_ingestion/sde/) (`parse`, `dogma`, `universe`, `industry`, `social`,
-`facilities`, `sites`, `wormholes`, `source`, `download`), [`wiki/scrape.py`](ingestion/capsuleers_ingestion/wiki/),
-[`missions/eve_survival.py`](ingestion/capsuleers_ingestion/missions/). Adding a domain = add a parser
-that yields `Document`s and wire it into `parse_all` / `sources()`.
+`facilities`, `sites`, `wormholes`, `source`, `download`), [`wiki/`](ingestion/capsuleers_ingestion/wiki/)
+(multi-source MediaWiki crawler — see [`wiki/sources.py`](ingestion/capsuleers_ingestion/wiki/sources.py)),
+[`missions/eve_survival.py`](ingestion/capsuleers_ingestion/missions/),
+[`web/riley.py`](ingestion/capsuleers_ingestion/web/riley.py) (static-site crawler). Adding a domain =
+add a parser that yields `Document`s and wire it into `parse_all` / `sources()`; adding a MediaWiki =
+append a `WikiSource` to `wiki/sources.py` (picked up by both the full crawl and the incremental timer).
 
 ---
 

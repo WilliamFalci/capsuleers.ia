@@ -18,6 +18,7 @@ from .chunk import chunk_documents
 from .models import Document
 from .sde import parse_all
 from .wiki.scrape import scrape_wiki
+from .wiki.sources import WIKI_SOURCES, wiki_source
 
 
 def _sde_docs(sde_dir: str | None) -> Iterator[Document]:
@@ -37,12 +38,21 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Ingestione dati EVE")
     ap.add_argument("--all", action="store_true", help="SDE + Wiki")
     ap.add_argument("--sde", action="store_true", help="solo SDE")
-    ap.add_argument("--wiki", action="store_true", help="solo EVE University Wiki")
+    ap.add_argument("--wiki", action="store_true",
+                    help="solo wiki MediaWiki (tutte le fonti registrate)")
+    ap.add_argument("--wiki-source", default=None,
+                    help="limita il crawl wiki a una fonte (es. eveuni|sistersprobe; "
+                         "default tutte)")
     ap.add_argument("--wiki-limit", type=int, default=None,
-                    help="max pagine wiki (per test; default tutte)")
+                    help="max pagine wiki PER FONTE (per test; default tutte)")
     ap.add_argument("--missions", action="store_true", help="solo guide missioni (eve-survival.org)")
     ap.add_argument("--missions-limit", type=int, default=None,
                     help="max guide missioni (per test; default tutte)")
+    ap.add_argument("--riley", action="store_true",
+                    help="solo guide Riley Entertainment (sito statico; NON in --all "
+                         "per la licenza non esplicita)")
+    ap.add_argument("--riley-limit", type=int, default=None,
+                    help="max pagine Riley (per test; default tutte)")
     ap.add_argument("--sde-dir", default=None,
                     help="usa una cartella SDE JSONL già estratta (salta il download)")
     ap.add_argument("--dump", metavar="FILE",
@@ -81,17 +91,27 @@ def main() -> None:
         print(f"Indicizzati {total} chunk da {args.from_dump}.")
         return
 
-    if not (args.all or args.sde or args.wiki or args.missions):
-        ap.error("specifica una fonte (--all|--sde|--wiki|--missions) oppure --from-dump")
+    if not (args.all or args.sde or args.wiki or args.missions or args.riley):
+        ap.error("specifica una fonte (--all|--sde|--wiki|--missions|--riley) oppure --from-dump")
+
+    wiki_sources = (
+        [wiki_source(args.wiki_source)] if args.wiki_source else list(WIKI_SOURCES)
+    )
 
     def sources() -> Iterator[Document]:
         if args.all or args.sde:
             yield from _sde_docs(args.sde_dir)
         if args.all or args.wiki:
-            yield from scrape_wiki(limit=args.wiki_limit)
+            for src in wiki_sources:
+                print(f"[wiki] crawl {src.label} ({src.api_url})")
+                yield from scrape_wiki(src, limit=args.wiki_limit)
         if args.all or args.missions:
             from .missions.eve_survival import scrape_missions
             yield from scrape_missions(limit=args.missions_limit)
+        if args.riley:  # opt-in only (not in --all): no explicit licence
+            from .web.riley import scrape_riley
+            print("[riley] crawl riley-entertainment.com/gaming/eve-online")
+            yield from scrape_riley(limit=args.riley_limit)
 
     chunks = chunk_documents(sources())
 

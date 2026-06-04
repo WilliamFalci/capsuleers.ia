@@ -51,13 +51,18 @@ with attribution, under share-alike terms.**
 | Source | Content | License |
 |---|---|---|
 | EVE University Wiki (`wiki.eveuniversity.org`) | Mechanics, terminology, mining, exploration | **CC BY-NC-SA 4.0** |
+| EVE Sister Core Scanner Probe Wiki (`sistersprobe.fandom.com/de`) | Exploration sites (anomalies / signatures / relic & data sites), German | CC BY-SA (Fandom) |
+| EVE Wiki (`eve.fandom.com`) | General EVE encyclopedia, English | CC BY-SA (Fandom) |
 | EVE SDE (Fenris Creations) | Game static data | Fenris Creations Developer License |
 | eve-survival.org | PVE mission guides | Terms not explicit — used as fan reference; see ingestion note |
+| Riley Entertainment (`riley-entertainment.com`) | Combat-site ship fits, COSMOS guides, hacking/relic/data loot stats | **No explicit licence (commercial)** — opt-in `--riley`, NOT in `--all`; see ingestion note |
 | Anoikis (`anoikis.info`) | Wormhole effects / statics | Fan community data |
 | EVE Ref (`everef.net`) | Item reference / live prices | Open data |
 
 If you intend to use the index commercially, you must regenerate it **excluding**
-the CC BY-NC-SA sources (EVE University Wiki).
+the CC BY-NC-SA sources (EVE University Wiki) AND the no-explicit-licence sources
+(eve-survival, Riley Entertainment). Riley is already **opt-in only** (`--riley`,
+never part of `--all`), so a default build does not include it.
 
 ---
 
