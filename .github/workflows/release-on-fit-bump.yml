@@ -1,0 +1,70 @@
+name: Release on eve-fit-engine bump
+
+# When Dependabot's eve-fit-engine bump lands on main, only the dependency
+# changed — the app's own version did not, so no tag is created and release.yml
+# (which triggers on `v*.*.*` tags) never runs. This workflow closes that gap:
+# on every push to main whose head commit is a Dependabot eve-fit-engine bump,
+# it patch-bumps the desktop app version, commits + tags it, and dispatches
+# release.yml so a fresh cross-platform installer is built and published.
+#
+# Loop safety: the bump commit it creates is pushed with GITHUB_TOKEN (which by
+# design does not re-trigger push workflows) AND its message does not contain
+# "bump eve-fit-engine", so the guard below would skip it anyway.
+#
+# Why dispatch instead of relying on the tag push: a tag pushed with
+# GITHUB_TOKEN does not trigger release.yml's `on: push: tags`. workflow_dispatch
+# is the documented exception that DOES run under GITHUB_TOKEN, so we trigger the
+# release build explicitly on the freshly created tag.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # push the bump commit + tag
+  actions: write    # dispatch release.yml
+
+concurrency:
+  group: release-on-fit-bump
+  cancel-in-progress: false
+
+jobs:
+  bump-and-release:
+    runs-on: ubuntu-latest
+    if: ${{ contains(github.event.head_commit.message, 'bump eve-fit-engine') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Patch-bump desktop app version
+        id: bump
+        working-directory: desktop
+        run: |
+          new=$(npm version patch --no-git-tag-version)   # prints e.g. v0.1.52
+          echo "version=$new" >> "$GITHUB_OUTPUT"
+          echo "Bumped desktop app to $new (eve-fit-engine auto-update)."
+
+      - name: Commit, tag & push
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name  "capsuleers-bot"
+          git config user.email "bot@capsuleers.app"
+          git add desktop/package.json desktop/package-lock.json
+          git commit -m "chore(release): $VERSION [auto] after dependency update"
+          git tag "$VERSION"
+          git push origin HEAD:main
+          git push origin "$VERSION"
+
+      - name: Dispatch release build for the new tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$VERSION"
