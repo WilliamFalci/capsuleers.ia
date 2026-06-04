@@ -45,17 +45,23 @@ function writeChunk(stream, chunk) {
  * @param {string} o.dest         Final path of the file.
  * @param {string} [o.sha256]     Expected checksum (hex). If absent, no verification.
  * @param {number} [o.size]       Expected size in bytes (for progress and sanity).
+ * @param {boolean} [o.force]     Re-download even if the final file is already present and
+ *                                valid (used by the "force re-download RAG" action). The
+ *                                existing file is kept until the fresh copy is verified and
+ *                                atomically renamed over it, so an abort leaves it intact.
  * @param {(p:{received:number,total:number,speed:number,done?:boolean})=>void} [o.onProgress]
  * @param {AbortSignal} [o.signal]
  * @returns {Promise<string>} the `dest` path once the download is complete and verified.
  */
-export async function downloadFile({ url, dest, sha256, size, onProgress = () => {}, signal } = {}) {
+export async function downloadFile({ url, dest, sha256, size, force = false, onProgress = () => {}, signal } = {}) {
   if (!url || !dest) throw new Error("downloadFile: url e dest sono obbligatori");
   const part = dest + ".part";
   await fs.promises.mkdir(path.dirname(dest), { recursive: true });
 
-  // 1) Final file already present and valid → nothing to do (idempotent).
-  if (fs.existsSync(dest)) {
+  // 1) Final file already present and valid → nothing to do (idempotent). Skipped
+  //    on force: we always re-fetch, but keep the old file until the new one is
+  //    verified + renamed over it (step 4), so a cancel never loses a working index.
+  if (!force && fs.existsSync(dest)) {
     const okSize = !size || statSize(dest) === size;
     if (okSize && (!sha256 || (await fileSha256(dest, signal)) === sha256)) {
       const t = statSize(dest);

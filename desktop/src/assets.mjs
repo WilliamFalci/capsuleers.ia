@@ -204,13 +204,13 @@ export async function firstRunTasks({ modelsDir, dataDir, modelEntry, manifest =
  * Downloads a list of tasks in sequence, reporting AGGREGATED progress
  * (total bytes across all tasks) + the current task. Cancelable via signal.
  */
-export async function downloadTasks(tasks, { onProgress = () => {}, signal } = {}) {
+export async function downloadTasks(tasks, { onProgress = () => {}, signal, force = false } = {}) {
   const grandTotal = tasks.reduce((s, t) => s + (t.size || 0), 0);
   let doneBytes = 0;
   for (let i = 0; i < tasks.length; i++) {
     const t = tasks[i];
     await downloadFile({
-      url: t.url, dest: t.dest, sha256: t.sha256, size: t.size, signal,
+      url: t.url, dest: t.dest, sha256: t.sha256, size: t.size, signal, force,
       onProgress: ({ received, speed }) => onProgress({
         index: i, count: tasks.length, label: t.label,
         received: doneBytes + received, total: grandTotal, speed,

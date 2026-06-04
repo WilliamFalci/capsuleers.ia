@@ -4,12 +4,12 @@ import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, Notificati
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
-import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState, deleteModelFile } from "./engine.mjs";
+import { configurePaths, init, ask, resetConversation, shutdown, listModels, setModel, vramState, deleteModelFile, assetPaths } from "./engine.mjs";
 import { localIntel, characterDetail, sharePilotIntel, analyzeDScan, shareDScan } from "./intel.mjs";
 import { listEntries as listShareHistory, addEntry as addShareHistory, clearEntries as clearShareHistory } from "./intel-history.mjs";
 import { startWatch, stopWatch, isEnabled, scanNow } from "./clipboard-watch.mjs";
 import { statSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { loadManifest, loadEffectiveManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, indexTasks, loadCatalog, installedCatalogIds, modelTask, checkIndexUpdate, persistIndexManifest } from "./assets.mjs";
+import { loadEffectiveManifest, assetStatus, firstRunTasks, downloadTasks, writeIndexMeta, indexTasks, loadCatalog, installedCatalogIds, modelTask, checkIndexUpdate, persistIndexManifest, localIndexVersion } from "./assets.mjs";
 import electronUpdater from "electron-updater";
 const { autoUpdater } = electronUpdater;
 
@@ -397,6 +397,7 @@ function scanClipboardNow() {
 let assetDirs = null;        // { modelsDir, dataDir } when packaged; null in dev
 let setupAbort = null;       // AbortController for the in-progress first-run download
 let modelDlAbort = null;     // AbortController for an extra model downloaded post-setup
+let indexDlAbort = null;     // AbortController for a forced RAG-index re-download (RAG panel)
 async function setupAssetDirs() {
   if (!app.isPackaged) return;
   const modelsDir = path.join(app.getPath("userData"), "models");
@@ -560,6 +561,7 @@ app.on("before-quit", (e) => {
   // and resumes on next launch.
   if (setupAbort) setupAbort.abort();
   if (modelDlAbort) modelDlAbort.abort();
+  if (indexDlAbort) indexDlAbort.abort();
   shutdown().finally(() => app.quit());
 });
 
@@ -597,6 +599,7 @@ ipcMain.handle("data:wipe-all", async () => {
   // 1. Stop any in-flight native work / downloads so model files aren't held open.
   try { setupAbort?.abort(); } catch { /* */ }
   try { modelDlAbort?.abort(); } catch { /* */ }
+  try { indexDlAbort?.abort(); } catch { /* */ }
   try { await shutdown(); } catch { /* */ }
   // 2. Let Chromium release its own managed storage (cookies / leveldb / cache) — on
   //    Windows those files can't be deleted while the process holds them open.
@@ -724,6 +727,72 @@ ipcMain.handle("models:download", async (_e, modelId) => {
   }
 });
 ipcMain.on("models:download-cancel", () => { if (modelDlAbort) modelDlAbort.abort(); });
+
+// ── RAG index panel: version/info + forced re-download ──────────────────────
+// Info shown in the RAG window: installed index version, embedder/dim, per-file
+// sizes, and whether a newer compatible index is published. In dev the index lives
+// in the project (not userData) so a re-download isn't offered.
+ipcMain.handle("rag:info", async () => {
+  const { dataDir } = assetPaths();  // userData when packaged, project ./data in dev
+  const m = loadEffectiveManifest(dataDir);
+  let update = { available: false, version: null };
+  try {
+    const chk = await checkIndexUpdate({ dataDir });
+    update = { available: !!chk.available, version: chk.manifest?.index?.version || null };
+  } catch { /* offline → no update info */ }
+  return {
+    packaged: !!assetDirs, canRedownload: true, busy: !!indexDlAbort,
+    version: m.index.version, embedModel: m.index.embedModel, dim: m.index.dim,
+    installedVersion: localIndexVersion(dataDir),
+    files: m.index.files.map((f) => ({ name: f.name, size: f.size })),
+    totalBytes: m.index.files.reduce((s, f) => s + f.size, 0),
+    update,
+  };
+});
+
+// Force a fresh download of the whole RAG index (even if already up to date). Prefers
+// a newer compatible remote manifest, else re-fetches the current one. The old files
+// stay until each new file is verified + renamed over (downloadFile force), so a
+// cancel never breaks the working index. Progress via "rag:redownload-progress".
+ipcMain.handle("rag:redownload", async () => {
+  if (indexDlAbort || setupAbort || modelDlAbort) return { error: "Download già in corso." };
+  const { dataDir } = assetPaths();  // works in dev (project ./data) and packaged (userData)
+  indexDlAbort = new AbortController();
+  try {
+    let manifest = loadEffectiveManifest(dataDir);
+    try {
+      const chk = await checkIndexUpdate({ dataDir, signal: indexDlAbort.signal });
+      if (chk.available && chk.manifest) manifest = chk.manifest;  // grab the newer one while we're at it
+    } catch { /* offline → re-fetch the current version */ }
+    const tasks = indexTasks(manifest, dataDir);
+    // Clear any stale .part so force starts each file fresh (finals are left in place
+    // and only replaced atomically on success).
+    for (const t of tasks) await rm(t.dest + ".part", { force: true }).catch(() => {});
+    await downloadTasks(tasks, {
+      force: true,
+      signal: indexDlAbort.signal,
+      onProgress: (p) => { if (!win?.isDestroyed()) win.webContents.send("rag:redownload-progress", p); },
+    });
+    persistIndexManifest(dataDir, manifest);  // new baseline
+    writeIndexMeta(dataDir, manifest);
+    indexDlAbort = null;
+    return { ok: true, version: manifest.index.version, needsRestart: true };
+  } catch (e) {
+    indexDlAbort = null;
+    const aborted = /abort/i.test(e?.name || "") || /annull/i.test(e?.message || "");
+    return { error: e.message, aborted };
+  }
+});
+ipcMain.on("rag:redownload-cancel", () => { if (indexDlAbort) indexDlAbort.abort(); });
+
+// Relaunch the app so the engine reloads the freshly-downloaded index (loaded once
+// at init from disk). Used by the RAG panel's "restart to apply" button.
+ipcMain.on("app:relaunch", async () => {
+  await shutdown().catch(() => {});
+  shuttingDown = true;
+  app.relaunch();
+  app.exit(0);
+});
 
 // ── First-run setup: on-demand asset download ──────────────────────────────
 // Full first-run info (status + bytes + model choices) requested by the renderer.

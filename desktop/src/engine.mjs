@@ -41,6 +41,11 @@ export function configurePaths({ modelsDir, dataDir } = {}) {
   if (dataDir) { pricesDataDir(dataDir); linksDataDir(dataDir); }
 }
 
+/** The resolved models/data directories (project dirs in dev, userData when packaged
+ *  after configurePaths). Lets callers (e.g. the RAG panel) act on the index location
+ *  in BOTH modes, instead of only knowing the packaged userData paths. */
+export function assetPaths() { return { modelsDir: MODELS_DIR, dataDir: DATA }; }
+
 const DIM = 1024, TOP_K = 12, MAX_CONTEXT_CHARS = 6000;
 // Min cosine similarity (new question vs the previous one) to consider the prior
 // turn relevant and include it as context. Too much history confuses the model, so

@@ -18,6 +18,15 @@ contextBridge.exposeInMainWorld("capsuleers", {
     cancelDownload: () => ipcRenderer.send("models:download-cancel"),
     onDownloadProgress: (cb) => ipcRenderer.on("models:download-progress", (_e, p) => cb(p)),
   },
+  // RAG index: version/info panel + forced re-download with progress, and a
+  // relaunch to apply a freshly-downloaded index.
+  rag: {
+    info: () => ipcRenderer.invoke("rag:info"),
+    redownload: () => ipcRenderer.invoke("rag:redownload"),
+    cancelRedownload: () => ipcRenderer.send("rag:redownload-cancel"),
+    onProgress: (cb) => ipcRenderer.on("rag:redownload-progress", (_e, p) => cb(p)),
+    restart: () => ipcRenderer.send("app:relaunch"),
+  },
   // Write text to the OS clipboard (used by the "copy fit" button on EFT blocks).
   clipboard: { write: (text) => ipcRenderer.invoke("clipboard:write", text) },
   // App data lifecycle: wipe ALL user data (downloaded models, RAG index, caches,
