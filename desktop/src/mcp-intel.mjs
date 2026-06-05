@@ -502,7 +502,15 @@ export async function maybeMcp(question, standalone = question) {
     }
 
     // 3) WAR / HEAD-TO-HEAD — "X vs Y", "guerra tra X e Y", "confronta X e Y".
-    {
+    // A conceptual/definitional question — "what is the difference between X and Y", "qual è
+    // la differenza tra X e Y", "X o Y, quale è meglio?", "cosa cambia tra X e Y" — is a
+    // KNOWLEDGE query about EVE concepts (account types like Alpha/Omega, ship classes,
+    // modules…), NOT a killboard head-to-head, even when the two names coincidentally resolve
+    // to a real alliance/character. Skip the intent so it falls through to RAG. Genuine war
+    // framing (guerra/war, "X vs Y", battaglia, confronta) never uses "differenza"/"difference"/
+    // "meglio"/"cosa cambia", so it is unaffected.
+    const conceptualDiff = /\b(?:differenz\w*|differ\w*|difference|cosa\s+cambia|che\s+cambia|quale?\s+(?:è|e)\s+megli\w*|which\s+is\s+better)\b/i.test(q);
+    if (!conceptualDiff) {
       // Explicit war framing ("guerra/war … tra/fra/between … e/and/vs") must be tried
       // BEFORE the generic "X vs Y": otherwise "guerra tra The Initiative. vs Fraternity"
       // is caught by the vs-matcher with side A = "guerra tra The Initiative." — the "tra"
@@ -516,6 +524,12 @@ export async function maybeMcp(question, standalone = question) {
         if (ok(a) && ok(b)) {
           const d = await callTool("war_report", { a, b });
           if (!d) return EMPTY;
+          // A coincidental name collision — a concept (e.g. the Alpha/Omega account tiers,
+          // or two module names) that happens to match a real alliance/character — yields a
+          // war report with no combat in either direction. Don't surface a meaningless
+          // 0-vs-0 "stalemate" card: fall through to RAG, which actually documents the concept.
+          const t = d.totals || {};
+          if (!(Number(t.total_kills) > 0) && !(Number(t.total_isk) > 0)) return EMPTY;
           const card = versusCard(d);
           // Rich textual recap (full-data narration) AND the visual card — not just a
           // pointer to the card, so the battle / ISK / contested-systems story is written out.
