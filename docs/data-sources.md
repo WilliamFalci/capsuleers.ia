@@ -9,7 +9,11 @@ indexed in the RAG; **live data** (prices, orders, killmails, activity) → fetc
 | Source | What it provides | Type | Status |
 |---|---|---|---|
 | **Official Fenris Creations SDE** (JSONL) | skills, items, ships, modules, dogma, universe, blueprints, lore, sites/anomalies | static | ✅ indexed |
-| **EVE University Wiki** | guides, terminology, mechanics, missions, wormholes, exploration | static (CC-BY-SA) | ✅ indexed |
+| **EVE University Wiki** | guides, terminology, mechanics, missions, wormholes, exploration | static (CC BY-NC-SA 4.0) | ✅ indexed |
+| **EVE Sister Core Scanner Probe Wiki** (Fandom, DE) | exploration sites: anomalies, signatures, relic & data sites | static (CC-BY-SA) | ✅ indexed |
+| **EVE Wiki** (eve.fandom.com, EN) | general EVE encyclopedia | static (CC-BY-SA) | ✅ indexed |
+| **Riley Entertainment** (static guides) | combat-site ship fits, COSMOS guides, hacking/relic/data loot stats | static (no explicit licence) | ⚠️ opt-in (`--riley`, never in `--all`) |
+| **eve-survival.org** | PVE mission guides (Wikka wiki) | static (licence not stated) | ✅ indexed |
 | **Anoikis** (anoikis.info) | system effects and wormhole statics (J-space) | semi-static | ✅ indexed |
 | **EVE Ref** (data.everef.net) | global reference prices (adjusted/average) | live | ✅ on-demand lookup (`/price`) |
 | **eve-kill** (api.eve-kill.com) | killboard: character/corp/alliance stats, recent kills/losses, battles, intel | live | ✅ on-demand (`intel.mjs`/`esi.mjs`) |

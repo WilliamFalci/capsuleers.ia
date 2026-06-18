@@ -8,6 +8,24 @@
 // callback (the main process shows a system notification asking for confirmation).
 // OPT-IN feature: watching only starts when the user enables it.
 import { clipboard } from "electron";
+import { execFileSync } from "node:child_process";
+
+// On Wayland, Electron's clipboard.readText() only returns fresh content while the window
+// is focused, so a Local/D-Scan copied with the app in the background goes unseen. wl-paste
+// (wl-clipboard) reads via the data-control protocol regardless of focus, so we prefer it on
+// Wayland and fall back to Electron's clipboard elsewhere (or if wl-clipboard isn't installed).
+let wlPasteOk = process.platform === "linux" && !!process.env.WAYLAND_DISPLAY;
+function readClipboardText() {
+  if (wlPasteOk) {
+    try {
+      return execFileSync("wl-paste", ["-n"], { encoding: "utf8", timeout: 1000, maxBuffer: 4 * 1024 * 1024 });
+    } catch (e) {
+      if (!e || e.code !== "ENOENT") return "";   // empty / non-text clipboard → nothing to detect
+      wlPasteOk = false;                           // wl-clipboard not installed → fall back to Electron from now on
+    }
+  }
+  try { return clipboard.readText(); } catch { return ""; }
+}
 
 let timer = null;
 let lastText = "";          // last content seen (avoids reprocessing)
@@ -85,8 +103,7 @@ export function detectClipboard(text) {
 }
 
 function tick() {
-  let t = "";
-  try { t = clipboard.readText(); } catch { return; }
+  const t = readClipboardText();
   if (t === lastText) return;
   lastText = t;
   const payload = detectClipboard(t);
@@ -101,7 +118,7 @@ function tick() {
 
 export function startWatch(cb) {
   onDetect = cb;
-  lastText = (() => { try { return clipboard.readText(); } catch { return ""; } })();  // don't trigger on content already present
+  lastText = readClipboardText();  // don't trigger on content already present
   if (!timer) timer = setInterval(tick, 800);
   enabled = true;
 }
@@ -116,5 +133,5 @@ export function isEnabled() { return enabled; }
 // Immediate manual scan of the clipboard (for the "scan now" button).
 // Returns the discriminated payload ({ kind:'local'|'dscan', ... }) or null.
 export function scanNow() {
-  try { return detectClipboard(clipboard.readText()); } catch { return null; }
+  try { return detectClipboard(readClipboardText()); } catch { return null; }
 }

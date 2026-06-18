@@ -112,7 +112,13 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   `detectClipboard()` discriminates a **Local roster** (`isLocalList`) from a **D-Scan**
   (`isDScan` — ≥4 tab cols, numeric typeID col0, distance-like last col), returning a
   discriminated `{ kind: 'local'|'dscan', … }` payload. Ignores content already present
-  when enabled (so re-copying the same scan is a no-op).
+  when enabled (so re-copying the same scan is a no-op). **Reads via `wl-paste` on Wayland**
+  (`readClipboardText()`, gated on `process.platform === 'linux' && WAYLAND_DISPLAY`): Electron's
+  `clipboard.readText()` only returns fresh content while the window is focused on Wayland, so a
+  scan copied with the app in the background would go unseen — `wl-paste -n` (wl-clipboard, via
+  `execFileSync`) reads through the data-control protocol regardless of focus. Falls back to
+  `clipboard.readText()` everywhere else, and permanently after a `wl-paste` `ENOENT` (wl-clipboard
+  not installed).
 - [`links.mjs`](desktop/src/links.mjs) — `linkify` + `detectLang`.
 
 **Outbound User-Agent** — every external request (in both halves) must identify the app via a single
@@ -129,7 +135,17 @@ two files only.
   (a catalog chat model is already installed and only the base assets — index/embedding — are
   missing): the renderer's `#setup` overlay then switches to a **data-update** presentation (distinct
   title/intro, no model picker, size shown in MB, "Aggiorna e avvia") instead of the full first-run
-  model picker. Same download/cancel/resume machinery for both modes.
+  model picker. Same download/cancel/resume machinery for both modes. Also hosts the **RAG index
+  panel** handlers (`rag:info` / `rag:redownload` / `rag:redownload-cancel` + `app:relaunch`): the
+  toolbar **RAG** button opens a panel showing the installed index version / embedder / dim / total
+  size / per-file list, flags when a newer **compatible** index is published, and offers a **forced
+  full re-download** with live progress + cancel followed by a "restart to apply". The forced path
+  uses `downloadFile`'s `force` flag — bypasses the idempotent size-match skip while keeping the old
+  file until the new one is verified and atomically renamed over it, so a cancel never breaks a
+  working index; the handlers resolve the data dir via the engine (`assetPaths`) so it works in BOTH
+  dev and packaged builds. `data:wipe-all` clears all downloaded models + RAG index + caches.
+  **Both `models:catalog` and `models:download` resolve `modelsDir` via `assetPaths()`** (not the
+  `assetDirs` guard) so the model catalog + on-demand downloads work in dev too, not only packaged.
 - **RAG index auto-update**: [`assets.mjs`](desktop/src/assets.mjs) fetches the index manifest at
   runtime (`INDEX_MANIFEST_URL`, raw `assets-manifest.json` on `main`) like the model catalog. A
   newer `index.version` with matching `embedModel`/`dim` is downloaded + persisted to

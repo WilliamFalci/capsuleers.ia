@@ -53,12 +53,15 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   **entity overview/timeline/recent-kills**, **ships used**, **top rankings**
   (favourite hulls/systems/regions, who they kill/die to) and **global/system activity pulse**.
 - **Clipboard intel (Local + D-Scan)** — with the **Intel** watcher on, copy a Local
-  (Ctrl+A, Ctrl+C) and the app shows who's around it, flagging the dangerous ones; copy a
-  **directional scan** and it recognises it too and gives an instant **composition
-  breakdown** — ship classes, per-hull counts, detected system and other entities —
-  classified **fully offline** from the bundled `eve-fit-engine` SDE. Either result can be
-  **shared**: one click pushes it to **capsuleers.app**, copies a 24h link to your
-  clipboard and keeps it in a local history with an expiry countdown.
+  (Ctrl+A, Ctrl+C) and the app shows who's around it with an at-a-glance summary
+  (alliance / corporation / pilot counts + detected-alliance chips) above the per-pilot
+  list, flagging the dangerous ones; copy a **directional scan** and it recognises it too
+  and gives an instant **composition breakdown** — ship classes, per-hull counts, detected
+  system and other entities — classified **fully offline** from the bundled `eve-fit-engine`
+  SDE. Either result can be **shared**: one click pushes it to **capsuleers.app**, copies a
+  24h link to your clipboard and keeps it in a local history with an expiry countdown.
+  (On Linux/Wayland the watcher reads via `wl-paste` so a scan copied with the app in the
+  background is still seen — install `wl-clipboard` for background capture.)
 - **Thera/Turnur wormhole connections** (EVE-Scout) — "the Thera connection closest to
   Jita", with the **entry and exit signatures** and jump distance.
 - **Model management** — pick/download/delete chat models from an **updatable catalog**,
@@ -69,7 +72,10 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   background and offers a restart — no reinstall, no app update. If the data needs
   (re)downloading before the assistant can start, a dedicated **data-update** screen
   shows what's being fetched (in MB) and makes clear your AI model is already installed
-  and won't be re-downloaded — distinct from the full first-run model picker.
+  and won't be re-downloaded — distinct from the full first-run model picker. A **RAG**
+  panel (toolbar) shows the installed index version, embedder, size and file list, flags
+  when a newer compatible index is available, and lets you **force a full re-download**
+  (with progress + cancel) and restart onto the fresh index.
 
 ## Stack
 

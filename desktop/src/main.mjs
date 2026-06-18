@@ -686,10 +686,10 @@ ipcMain.handle("models:set", async (_e, file) => {
 // fetch and use another model after first run. From the updatable remote catalog,
 // filtered to the size range, sorted by how well they fit the free VRAM.
 ipcMain.handle("models:catalog", async () => {
-  if (!assetDirs) return { available: false, models: [] };
   try {
+    const { modelsDir } = assetPaths();   // userData when packaged, project ./models in dev
     const catalog = await loadCatalog();
-    const installed = new Set(installedCatalogIds(catalog, assetDirs.modelsDir));
+    const installed = new Set(installedCatalogIds(catalog, modelsDir));
     const v = await vramState().catch(() => null);
     const freeGB = v ? v.freeMB / 1024 : null;
     const models = catalog.models.filter((m) => !installed.has(m.id)).map((m) => ({
@@ -704,14 +704,14 @@ ipcMain.handle("models:catalog", async () => {
 // Download an extra chat model on demand, then switch to it. Progress via
 // "models:download-progress"; cancelable via "models:download-cancel".
 ipcMain.handle("models:download", async (_e, modelId) => {
-  if (!assetDirs) return { error: "Download non disponibile (asset locali)." };
   if (modelDlAbort || setupAbort) return { error: "Download già in corso." };
   modelDlAbort = new AbortController();
   try {
+    const { modelsDir } = assetPaths();   // userData when packaged, project ./models in dev
     const catalog = await loadCatalog({ signal: modelDlAbort.signal });
     const entry = catalog.models.find((m) => m.id === modelId);
     if (!entry) { modelDlAbort = null; return { error: "Modello sconosciuto." }; }
-    const t = await modelTask(entry, assetDirs.modelsDir, modelDlAbort.signal);
+    const t = await modelTask(entry, modelsDir, modelDlAbort.signal);
     await downloadTasks([t], {
       signal: modelDlAbort.signal,
       onProgress: (p) => { if (!win?.isDestroyed()) win.webContents.send("models:download-progress", { ...p, modelId }); },
