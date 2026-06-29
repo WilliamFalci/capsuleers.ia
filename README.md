@@ -77,6 +77,21 @@ change/add/remove models later). Updates are delivered automatically (electron-u
   when a newer compatible index is available, and lets you **force a full re-download**
   (with progress + cancel) and restart onto the fresh index.
 
+## Privacy & security
+
+**Local-first by design.** The AI runs entirely on your machine; `ask()` makes no network
+calls. The only egress is the optional live-data lookups you trigger (eve-kill / ESI / EVE-Scout /
+EVE Ref) and the **Share** action (to capsuleers.app, on an explicit click). No account, no
+telemetry.
+
+**Desktop hardening.** The renderer runs sandboxed and context-isolated (no Node access from the
+UI) behind a narrow IPC bridge; a strict **Content-Security-Policy** contains any rendering bug
+(`connect-src 'self'` → no exfiltration), all HTML is quote-safe-escaped, the packaged binary is
+hardened with **Electron fuses** (`RunAsNode` off, asar-only load), and destructive actions require
+an explicit confirmation. Latest review:
+[`docs/security-review-2026-06-29.md`](docs/security-review-2026-06-29.md). Report issues per
+[`SECURITY.md`](SECURITY.md).
+
 ## Stack
 
 | Component | Technology |
@@ -143,7 +158,7 @@ release process in [`RELEASING.md`](RELEASING.md), knowledge base in [`ingestion
 
 - [`desktop/`](desktop/) — the standalone app (Electron + GPU RAG engine + live-data features).
 - [`ingestion/`](ingestion/) — Python data factory (SDE, wiki, missions, names index, auto-update).
-- [`docs/`](docs/) — architecture notes and data sources.
+- [`docs/`](docs/) — architecture notes, data sources, and the [security review](docs/security-review-2026-06-29.md).
 
 ## License
 

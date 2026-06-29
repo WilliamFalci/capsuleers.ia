@@ -2,6 +2,13 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
+  <!-- Content-Security-Policy (defence in depth): the renderer makes NO direct network
+       requests (all egress goes through IPC → main), so connect-src 'self' contains any
+       injected JS — it cannot POST exfiltrated data to a remote host. img-src is pinned to
+       the only image CDN actually used. 'unsafe-inline' is required for the app's own inline
+       <script>/<style>; it does NOT weaken the exfil containment, which is the point here.
+       The actual XSS sink (attribute breakout in answer rendering) is closed by esc() below. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.evetech.net data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'" />
   <title>Capsuleers.IA</title>
   <style>
     :root {
@@ -1525,16 +1532,23 @@
     const send = document.getElementById("send");
 
     // --- Markdown → HTML (minimal: bold, italic, code, lists, headings) ---
-    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Escapes &, <, > AND the quote chars: esc()'d values are also placed inside
+    // double-quoted HTML attributes (title="…", href="…"), so leaving " / ' raw
+    // would allow an attribute-breakout XSS from any value that reaches an attribute
+    // (e.g. a crafted URL the model echoes into a markdown link). Encoding both quotes
+    // makes esc() safe in element-content AND attribute contexts.
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     const inline = (s) => s
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
+      // URL char class excludes " (and <) so a quote can never break out of href="…"
+      // even if esc() ordering ever changes — defence in depth on top of the esc() above.
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"]+)\)/g, '<a href="$2">$1</a>')
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/(?<![*])\*([^*\n]+)\*(?![*])/g, "<em>$1</em>")
       // Auto-link bare http(s) URLs (e.g. a killmail link) → clickable, opens in the browser.
       // Skips URLs already inside an href="…" / markdown link (negative lookbehind) and keeps
       // trailing punctuation out of the link.
-      .replace(/(?<![">=])\bhttps?:\/\/[^\s<]+/g, (u) => { const m = u.match(/^(.*?)([.,;:!?)]*)$/); return `<a href="${m[1]}">${m[1]}</a>${m[2]}`; });
+      .replace(/(?<![">=])\bhttps?:\/\/[^\s<"]+/g, (u) => { const m = u.match(/^(.*?)([.,;:!?)]*)$/); return `<a href="${m[1]}">${m[1]}</a>${m[2]}`; });
     function mdToHtml(md) {
       const lines = esc(md).split("\n");
       let html = "";

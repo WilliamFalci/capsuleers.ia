@@ -48,6 +48,22 @@ asarUnpack:
   # from disk via fs — those reads fail inside app.asar, so unpack the data dir.
   - "**/node_modules/eve-fit-engine/data/**"
 
+# Electron fuses (binary hardening) — flipped at pack time by electron-builder (it locates the
+# per-platform binary and re-signs as needed). Closes the RunAsNode / NODE_OPTIONS / --inspect
+# escape hatches so the packaged binary can't be coerced into running as a generic Node process,
+# and forces the app to load only from the asar. Inherited by the per-GPU variant configs via
+# `extends` (electronFuses is an object → deep-merged, not array-replaced like `files`).
+# NOTE: enableEmbeddedAsarIntegrityValidation is intentionally OFF until a packaged Windows
+# build is smoke-tested with it on (a header mismatch can block launch; it is a no-op on the
+# Linux AppImage). Turn it on and verify a Windows install before relying on it.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: false
+  onlyLoadAppFromAsar: true
+
 # Publishing to GitHub Releases (feeds electron-updater and the latest*.yml files).
 # Set owner/repo when the repo is online; for local builds use
 # `electron-builder ... --publish never`.

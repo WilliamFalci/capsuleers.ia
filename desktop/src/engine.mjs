@@ -595,6 +595,9 @@ async function loadChatModel(file) {
 /** Hot-swaps the chat model. Cancels the in-flight generation, reloads,
  *  remembers the choice. Returns the status (GPU layers, etc.). */
 export async function setModel(file, onStatus = () => {}) {
+  // Reject any caller-influenced path that could escape MODELS_DIR (same basename guard as
+  // deleteModelFile; `file` reaches here from the renderer bridge via models:set).
+  if (!/^[^/\\]+\.gguf$/i.test(file || "")) throw new Error(`Nome modello non valido: ${file}`);
   await cancel();  // no generation in flight while swapping the model
   onStatus({ k: "loadingModel", model: modelLabel(file) });
   await loadChatModel(file);

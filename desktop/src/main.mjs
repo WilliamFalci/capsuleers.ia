@@ -73,6 +73,10 @@ const MSTR = {
     idxMsg: (v) => `Una nuova knowledge base (${v}) è stata scaricata.`,
     idxDetail: "Riavvia per usare i dati aggiornati. Verranno comunque applicati al prossimo avvio.",
     idxLater: "Più tardi", idxRestart: "Riavvia ora",
+    wipeTitle: "Cancella tutti i dati",
+    wipeMsg: "Eliminare TUTTI i dati locali dell'app?",
+    wipeDetail: "Verranno rimossi i modelli scaricati, l'indice RAG, le cache e le impostazioni, poi l'app si chiuderà. L'operazione non è reversibile.",
+    wipeConfirm: "Elimina tutto",
   },
   en: {
     trayShow: "Show Capsuleers.IA",
@@ -109,6 +113,10 @@ const MSTR = {
     idxMsg: (v) => `A new knowledge base (${v}) has been downloaded.`,
     idxDetail: "Restart to use the updated data. It will be applied on next launch anyway.",
     idxLater: "Later", idxRestart: "Restart now",
+    wipeTitle: "Wipe all data",
+    wipeMsg: "Delete ALL local app data?",
+    wipeDetail: "This removes the downloaded models, the RAG index, caches and settings, then quits. This cannot be undone.",
+    wipeConfirm: "Delete everything",
   },
 };
 const M = () => MSTR[(app.getLocale() || "en").toLowerCase().startsWith("it") ? "it" : "en"];
@@ -193,7 +201,9 @@ function createWindow() {
     backgroundColor: "#0a0b0d",   // avoid the white flash at startup
     // backgroundThrottling off: while you game (app in the background, maybe on
     // another monitor) the renderer must keep reacting — the Local banner + sound.
-    webPreferences: { preload: path.join(HERE, "preload.cjs"), backgroundThrottling: false },
+    // sandbox/contextIsolation/nodeIntegration are already the Electron defaults; set them
+    // explicitly so a future Electron default change can't silently weaken the renderer.
+    webPreferences: { preload: path.join(HERE, "preload.cjs"), backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
   // Open MAXIMIZED on the primary screen by default — the window fills the whole
   // work area, so the header (and everything else) always has room. If the user
@@ -596,6 +606,16 @@ ipcMain.handle("app:version", () => app.getVersion());          // shown in the 
 // the only way to reclaim the ~1 GB+ of userData before deleting the AppImage; on
 // Windows the NSIS uninstaller does the same automatically (build/installer.nsh).
 ipcMain.handle("data:wipe-all", async () => {
+  // Destructive AND reachable from the renderer via the context bridge: gate it behind a
+  // main-process confirmation so a compromised renderer (e.g. an XSS in answer rendering)
+  // can't silently wipe the user's downloaded models + RAG index. The renderer-side prompt
+  // is advisory; this dialog is the real gate.
+  const mw = M();
+  const { response } = await dialog.showMessageBox(win, {
+    type: "warning", title: mw.wipeTitle, message: mw.wipeMsg, detail: mw.wipeDetail,
+    buttons: [mw.btnCancel, mw.wipeConfirm], defaultId: 0, cancelId: 0, noLink: true,
+  });
+  if (response !== 1) return false;
   // 1. Stop any in-flight native work / downloads so model files aren't held open.
   try { setupAbort?.abort(); } catch { /* */ }
   try { modelDlAbort?.abort(); } catch { /* */ }

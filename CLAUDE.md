@@ -239,6 +239,18 @@ sites), EVE Wiki on Fandom (CC BY-SA, EN), Riley Entertainment guides (no explic
 licenses and are not redistributed. See [`THIRD_PARTY.md`](THIRD_PARTY.md). Unofficial, non-commercial
 fan project — not affiliated with Fenris Creations.
 
+## Security hardening (renderer + packaging)
+
+Hardened 2026-06-29 — full write-up in [`docs/security-review-2026-06-29.md`](docs/security-review-2026-06-29.md). **Invariants — don't regress:**
+
+- **Renderer is sandboxed + isolated.** `webPreferences` sets `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` **explicitly** (already the Electron 42 defaults — explicit so a future default change can't silently weaken them). No `<webview>`, no `enableRemoteModule`. A renderer XSS therefore cannot reach Node/native code — only the narrow `preload.cjs` bridge.
+- **`esc()` must stay quote-safe.** It encodes `& < > " '`. The `"`/`'` encoding is load-bearing: `esc()`'d values land inside double-quoted attributes (`title="…"`, and the model-answer markdown links built by `mdToHtml`), so dropping the quote escapes reintroduces an **attribute-breakout XSS** (the local model echoes a crafted URL → injected `onmouseover`). The link regexes in `inline()` also exclude `"` from the URL char class as defence in depth.
+- **CSP `<meta>` in `renderer/index.html`.** `connect-src 'self'` contains exfiltration (the renderer makes **no** direct network calls — all egress is via IPC → main); `img-src` is pinned to `images.evetech.net`. If you add a renderer-side fetch or a new image CDN, widen **only** the matching directive.
+- **Electron fuses** are flipped at pack time via `electronFuses:` in `electron-builder.yml` (inherited by the per-GPU variant configs through `extends`): `runAsNode` / `enableNodeOptionsEnvironmentVariable` / `enableNodeCliInspectArguments` off, `onlyLoadAppFromAsar` on. `enableEmbeddedAsarIntegrityValidation` is deliberately **off** pending a tested Windows build — flip + verify a Windows install before enabling.
+- **Destructive bridge actions need a main-side gate.** `data:wipe-all` shows a main-process confirmation `dialog` before wiping (the renderer prompt is advisory). Backed by `wipe*` keys in `MSTR` (it/en).
+- **Model-file handlers reject path traversal.** Both `deleteModelFile` and `setModel` require a bare `*.gguf` basename (`^[^/\\]+\.gguf$`) before `path.join(MODELS_DIR, …)`. Keep the guard on any new handler that joins a bridge-supplied filename.
+- **No hidden egress.** `ask()` is 100% local; eve-kill/ESI lookups are consented; capsuleers.app is hit only on an explicit Share. Don't add telemetry.
+
 ## Notes
 
 - [`docs/architecture.md`](docs/architecture.md) describes an **earlier** design (Fastify API +
