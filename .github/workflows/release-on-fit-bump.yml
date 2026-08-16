@@ -7,9 +7,19 @@ name: Release on eve-fit-engine bump
 # it patch-bumps the desktop app version, commits + tags it, and dispatches
 # release.yml so a fresh cross-platform installer is built and published.
 #
-# Loop safety: the bump commit it creates is pushed with GITHUB_TOKEN (which by
-# design does not re-trigger push workflows) AND its message does not contain
-# "bump eve-fit-engine", so the guard below would skip it anyway.
+# The trigger is the RESOLVED eve-fit-engine version in desktop/package-lock.json
+# actually changing between the previous commit and this one — deliberately NOT a
+# string match on the commit message. It used to be
+# `contains(head_commit.message, 'bump eve-fit-engine')`, i.e. Dependabot's exact
+# phrasing, so a hand-written bump ("chore(deps): eve-fit-engine 0.1.22 -> 0.1.25")
+# landed on main and this workflow was SKIPPED without a word: dependency updated,
+# no version bump, no tag, no installer. Comparing the lockfile fires on the thing
+# that matters, whoever wrote the commit and however they worded it.
+#
+# Loop safety, unchanged in substance: the release commit this job creates touches
+# only `version` in package.json, never the eve-fit-engine entry, so the check
+# below reports "no change". Belt and braces, it is pushed with GITHUB_TOKEN, which
+# by design does not re-trigger push workflows.
 #
 # Why dispatch instead of relying on the tag push: a tag pushed with
 # GITHUB_TOKEN does not trigger release.yml's `on: push: tags`. workflow_dispatch
@@ -31,13 +41,33 @@ concurrency:
 jobs:
   bump-and-release:
     runs-on: ubuntu-latest
-    if: ${{ contains(github.event.head_commit.message, 'bump eve-fit-engine') }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # Read the resolved version out of the lockfile before and after this push.
+      # The lockfile, not package.json: the range (`^0.1.25`) can stay put while
+      # the version that actually ships moves, and it is the shipped one that
+      # warrants an installer.
+      - name: Did the eve-fit-engine dependency actually change?
+        id: changed
+        run: |
+          read_ver() { git show "$1:desktop/package-lock.json" 2>/dev/null \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const l=JSON.parse(s);process.stdout.write((l.packages['node_modules/eve-fit-engine']||{}).version||'')}catch{process.stdout.write('')}})"; }
+          PREV=$(read_ver HEAD~1)
+          CURR=$(read_ver HEAD)
+          echo "prev='$PREV' curr='$CURR'"
+          if [ -n "$CURR" ] && [ "$PREV" != "$CURR" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "eve-fit-engine ${PREV:-none} -> $CURR — releasing."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "eve-fit-engine unchanged ($CURR) — nothing to release."
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.changed.outputs.changed == 'true'
         with:
           node-version: 22
           cache: npm
@@ -45,6 +75,7 @@ jobs:
 
       - name: Patch-bump desktop app version
         id: bump
+        if: steps.changed.outputs.changed == 'true'
         working-directory: desktop
         run: |
           new=$(npm version patch --no-git-tag-version)   # prints e.g. v0.1.52
@@ -52,6 +83,7 @@ jobs:
           echo "Bumped desktop app to $new (eve-fit-engine auto-update)."
 
       - name: Commit, tag & push
+        if: steps.changed.outputs.changed == 'true'
         env:
           VERSION: ${{ steps.bump.outputs.version }}
         run: |
@@ -64,6 +96,7 @@ jobs:
           git push origin "$VERSION"
 
       - name: Dispatch release build for the new tag
+        if: steps.changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.bump.outputs.version }}
