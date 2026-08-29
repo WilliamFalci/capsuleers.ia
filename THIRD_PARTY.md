@@ -94,7 +94,7 @@ model's license before redistributing any build that bundles it.
 These services are called for live data and are not redistributed; respect their
 respective terms of service and rate limits:
 
-- `eve-kill.com` / `api.eve-kill.com` — killboard
+- `eve-kill.com` — killboard (REST + analitiche sotto `/api`)
 - `eve-scout.com` / `api.eve-scout.com` — Thera/Turnur wormhole connections
 - `everef.net` / `data.everef.net` — prices / reference
 

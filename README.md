@@ -134,7 +134,7 @@ an explicit confirmation. Latest review:
   [`ingestion`](ingestion/capsuleers_ingestion/missions/eve_survival.py))*.
 - **Riley Entertainment** — combat-site ship fits, COSMOS guides, hacking/relic/data loot stats *(no explicit licence → opt-in `--riley`, never part of `--all`)*.
 - **Anoikis** (wormhole effects/statics) · **EVE Ref** (live prices) · **ESI** (official
-  live data) · **eve-kill.com** (killboard + [MCP](https://mcp.eve-kill.com/mcp) analytics) ·
+  live data) · **eve-kill.com** (killboard + [analitiche](https://eve-kill.com/api/docs#tag/mcp) analytics) ·
   **EVE-Scout** (Thera/Turnur connections).
 
 > Adding another MediaWiki = append a `WikiSource` to

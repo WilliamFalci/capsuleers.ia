@@ -5,7 +5,7 @@ import { dossierExtra, characterCard } from "./mcp-intel.mjs";
 import { USER_AGENT as UA } from "./user-agent.mjs";
 import { loadBundledDataset } from "eve-fit-engine/node";
 
-const BASE = "https://api.eve-kill.com";
+const BASE = "https://eve-kill.com/api";
 
 async function get(pathQ) {
   const r = await fetch(BASE + pathQ, { headers: { "User-Agent": UA } });
