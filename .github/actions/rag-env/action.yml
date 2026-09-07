@@ -86,8 +86,26 @@ runs:
       run: |
         set -euo pipefail
         # `uv venv` non usa ensurepip, quindi funziona sul python3.12 di sistema
-        # che il modulo venv non ce l'ha. Idempotente: al secondo giro non fa
-        # nulla di percettibile.
-        uv venv --python python3.12 "$DATA_ROOT/venv"
+        # che il modulo venv non ce l'ha.
+        #
+        # **Ma NON e' idempotente**: se l'ambiente esiste gia' rifiuta con
+        # «A virtual environment already exists» ed esce 2. Il volume e'
+        # persistente, quindi quello e' il caso NORMALE — ogni giro tranne il
+        # primo. Costato un giro rosso: la prova in locale aveva esercitato solo
+        # il percorso a freddo, cioe' l'unico che non si ripete mai.
+        #
+        # Il guardiano prova a ESEGUIRE l'interprete invece di limitarsi a
+        # cercare la cartella: cosi' copre anche l'ambiente rimasto rotto a
+        # meta' (o costruito su un python che non c'e' piu'), che altrimenti
+        # verrebbe riusato e fallirebbe piu' avanti, dove costa di piu' capirlo.
+        if ! "$DATA_ROOT/venv/bin/python" -c "import sys" >/dev/null 2>&1; then
+          echo "ambiente virtuale assente o inservibile: lo ricostruisco"
+          uv venv --clear --python python3.12 "$DATA_ROOT/venv"
+        else
+          echo "ambiente virtuale gia' pronto, lo riuso"
+        fi
+
+        # Questo invece si rilancia sempre, ed e' voluto: rimette in passo
+        # l'installazione editabile col percorso del checkout corrente.
         uv pip install --python "$DATA_ROOT/venv/bin/python" -e ingestion
         "$DATA_ROOT/venv/bin/python" -c "import capsuleers_ingestion, httpx, qdrant_client; print('dipendenze ok')"
