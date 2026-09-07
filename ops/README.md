@@ -128,6 +128,19 @@ systemctl --user enable --now capsuleers-missions-update.timer capsuleers-wormho
 
 ## Publishing the desktop index (reaching end-users)
 
+> **Since 2026-09-07 this is automated and runs in the cluster.** Two workflows
+> in `.github/workflows/` do it on a self-hosted runner: `rag-check` asks the
+> four sources daily whether anything moved, and `rag-publish` ingests,
+> validates, exports and publishes the release. The manual commands below still
+> work and stay the fallback — but on the ingestion workstation, not as the
+> normal path. Rationale, rejected alternatives and traps: `decision-20` in the
+> site repo's backlog (tracked as SITE-87).
+>
+> **One rule that section does not state and the automation depends on:** an SDE
+> update swaps in a collection holding the SDE *only*, so wiki and missions must
+> be rebuilt into it afterwards — otherwise the live collection silently loses
+> ~23% of the corpus while still looking healthy.
+
 The SDE/wiki jobs above refresh the **server** Qdrant collection. The desktop app
 ships a **flat file index** (`index.vec` + meta + names) hosted on the GitHub release
 `index-<date>`. `ops/publish-index.sh` closes the loop:

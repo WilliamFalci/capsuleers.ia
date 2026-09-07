@@ -1,0 +1,130 @@
+name: RAG · rileva novita'
+
+# Chiede alle quattro sorgenti dell'indice se e' cambiato qualcosa e, solo in
+# quel caso, lancia `rag-publish`. Non ingerisce e non pubblica nulla: e' il
+# sensore, non l'attuatore.
+#
+# I quattro `--check` condividono lo stesso contratto (verificato nel sorgente,
+# non supposto): **exit 0 = aggiornato, exit 1 = ci sono novita'**.
+#
+# Gira sul runner del cluster e NON sulla postazione, che e' il punto di tutto
+# l'esercizio: l'indice restava fermo perche' la catena dipendeva da una
+# macchina accesa e da qualcuno che si ricordasse di lanciarla.
+
+on:
+  schedule:
+    # 05:20 UTC. L'ora esatta non conta — conta che sia una sola volta al
+    # giorno: le sorgenti si muovono su scale di giorni o settimane, e ogni
+    # esecuzione in piu' e' traffico verso wiki di terzi che non ci deve nulla.
+    - cron: "20 5 * * *"
+  workflow_dispatch:
+
+# MAI `pull_request`. Il repository e' PUBBLICO e questo job gira su un runner
+# self-hosted dentro il cluster di produzione: un trigger da fork significa
+# esecuzione di codice arbitrario accanto al Postgres. Vedi il commento in
+# apps/capsuleers-ia-runner.yaml del repo kube-eveonlineitalia.
+
+permissions:
+  contents: read
+  actions: write # solo per lanciare rag-publish
+
+concurrency:
+  # Stesso gruppo della pubblicazione: le due non devono mai sovrapporsi sullo
+  # stesso Qdrant. `cancel-in-progress: false` mette in coda invece di annullare
+  # — un controllo perso non e' grave, una pubblicazione troncata si'.
+  group: rag-index
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: [self-hosted, Linux, X64, capsuleers-ia]
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/rag-env
+
+      - name: Interroga le quattro sorgenti
+        id: sources
+        shell: bash
+        run: |
+          set -uo pipefail
+          PY=ingestion/.venv/bin/python
+          CHANGED=""
+          BROKEN=""
+
+          interroga() {
+            modulo="$1"; etichetta="$2"
+            echo "── $etichetta"
+            out="$("$PY" -m "capsuleers_ingestion.$modulo" --check 2>&1)"; rc=$?
+            printf '%s\n' "$out"
+
+            # Una traccia di stack esce anch'essa con codice 1, cioe' con lo
+            # STESSO codice che significa «ci sono novita'». Senza distinguerli
+            # un guasto del controllo si travestirebbe da aggiornamento
+            # disponibile e finirebbe per lanciare una pubblicazione destinata a
+            # fallire piu' avanti, dove costa ore invece di secondi.
+            if printf '%s' "$out" | grep -qi 'Traceback'; then
+              echo "::error::$etichetta: il controllo e' fallito"
+              BROKEN="$BROKEN $etichetta"
+              return
+            fi
+
+            case "$rc" in
+              0) echo "   invariato" ;;
+              1) echo "   NOVITA'"; CHANGED="$CHANGED $etichetta" ;;
+              *) echo "::error::$etichetta: codice di uscita inatteso ($rc)"
+                 BROKEN="$BROKEN $etichetta" ;;
+            esac
+          }
+
+          interroga update          sde
+          interroga wiki_update     wiki
+          interroga wormhole_update wormhole
+
+          # Le missioni solo di domenica. Il loro `--check` non ha un'API di
+          # cambiamenti da interrogare: ri-scarica OGNI pagina di eve-survival
+          # per confrontarne l'hash. Farlo tutti i giorni sarebbe un crawl
+          # quotidiano su un sito di terzi per un corpus che si muove di rado —
+          # ed e' la ragione per cui anche il timer systemd era settimanale.
+          if [ "$(date -u +%u)" = "7" ]; then
+            interroga missions_update missions
+          else
+            echo "── missions: saltato (solo di domenica)"
+          fi
+
+          CHANGED="${CHANGED# }"; BROKEN="${BROKEN# }"
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "broken=$BROKEN"   >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Sorgenti dell'indice RAG"
+            echo
+            if [ -n "$CHANGED" ]; then echo "- **Novita'**: \`$CHANGED\`"; else echo "- Nessuna novita'"; fi
+            if [ -n "$BROKEN" ];  then echo "- **Controlli falliti**: \`$BROKEN\`"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Lancia la pubblicazione
+        if: steps.sources.outputs.changed != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANGED: ${{ steps.sources.outputs.changed }}
+        run: |
+          set -euo pipefail
+          gh workflow run rag-publish.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME" \
+            -f mode=auto \
+            -f reason="rag-check: novita' su $CHANGED"
+          echo "Pubblicazione lanciata per: $CHANGED" >> "$GITHUB_STEP_SUMMARY"
+
+      # Un controllo che non ha saputo rispondere deve tingere di rosso la lista
+      # Actions, che e' l'unico cruscotto che qualcuno guarda davvero. Un job
+      # che segnala un problema e poi esce 0 e' un job verde, cioe' un problema
+      # invisibile: e' gia' costato una volta su `sde-refresh.yml` (decision-011).
+      - name: Un controllo fallito e' un fallimento
+        if: steps.sources.outputs.broken != ''
+        run: |
+          echo "Controlli falliti: ${{ steps.sources.outputs.broken }}"
+          exit 1

@@ -1,0 +1,8 @@
+# Le etichette del runner self-hosted del cluster (apps/capsuleers-ia-runner.yaml
+# nel repository kube-eveonlineitalia). Dichiararle qui serve a una cosa sola, ma
+# che conta: senza, actionlint segnala `capsuleers-ia` come etichetta inesistente
+# e quel rumore permanente nasconderebbe un errore di battitura vero — che si
+# manifesterebbe come un job in coda per sempre, senza un messaggio.
+self-hosted-runner:
+  labels:
+    - capsuleers-ia

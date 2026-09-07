@@ -1,0 +1,226 @@
+name: RAG · pubblica l'indice
+
+# Aggiorna Qdrant, esporta l'indice piatto e pubblica la release `index-<data>`
+# che le app desktop scaricano al lancio successivo.
+#
+# ── La regola che decide la forma di questo workflow ────────────────────────
+#
+# `update.py` (SDE) NON aggiorna la collection viva: ne costruisce una NUOVA con
+# i soli documenti SDE e poi sposta l'alias. Wiki, missioni e wormhole scrivono
+# invece in place. Quindi dopo uno scambio la collection nuova contiene 59.859
+# chunk su 77.650: **manca il 23% del corpus** — e ha esattamente l'aspetto di
+# un indice sano. Un aggiornamento SDE obbliga percio' a ricostruire ANCHE wiki
+# e missioni; e' la ragione per cui esistono due percorsi e non uno.
+#
+# Il wormhole non e' fra questi: i suoi documenti nascono dentro il parsing SDE
+# (`parse_all`), quindi lo scambio se li porta dietro.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto = decide dal check SDE · incremental = aggiorna in place · full = ricostruisce tutto"
+        type: choice
+        options: [auto, incremental, full]
+        default: auto
+      publish:
+        description: "Pubblica la release al termine (se l'indice e' davvero cambiato)"
+        type: boolean
+        default: true
+      reason:
+        description: "Perche' e' stata lanciata (finisce nel riepilogo)"
+        type: string
+        default: "manuale"
+
+# Nessun trigger automatico oltre a quello che `rag-check` lancia esplicitamente,
+# e MAI `pull_request`: repository pubblico + runner self-hosted nel cluster di
+# produzione.
+
+permissions:
+  contents: write # commit del manifest + creazione della release
+
+concurrency:
+  group: rag-index
+  cancel-in-progress: false
+
+env:
+  # Gli indirizzi vivono qui, non nel manifest del runner: chi legge questo
+  # workflow deve poter vedere con cosa parla senza aprire un altro repository.
+  QDRANT_URL: http://qdrant:6333
+  OLLAMA_URL: http://ollama:11434
+  # Soglia deliberatamente sopra i 59.859 chunk del solo SDE: e' il numero che
+  # trasforma «indice amputato» da guasto invisibile a job rosso.
+  MIN_POINTS: "70000"
+  EMBED_DIM: "1024"
+
+jobs:
+  publish:
+    runs-on: [self-hosted, Linux, X64, capsuleers-ia]
+    # Il primo popolamento a freddo calcola ~77k embedding su CPU e puo' durare
+    # ore; i job su runner self-hosted possono girare ben oltre le 6 ore dei
+    # runner ospitati. A regime la cache riduce tutto a minuti.
+    timeout-minutes: 1440
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/rag-env
+
+      - name: Attendi Qdrant e Ollama
+        shell: bash
+        run: |
+          set -euo pipefail
+          attendi() {
+            for _ in $(seq 1 60); do
+              if curl -sf "$1" >/dev/null; then echo "$2 pronto"; return 0; fi
+              sleep 5
+            done
+            echo "::error::$2 non risponde a $1"; return 1
+          }
+          attendi "$QDRANT_URL/readyz"     Qdrant
+          attendi "$OLLAMA_URL/api/tags"   Ollama
+
+      - name: Assicura il modello di embedding
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Il modello vive sul volume di Ollama: al primo giro non c'e' e va
+          # scaricato (~634 MB), dopo questo passo non fa nulla. Senza, ogni
+          # embedding fallirebbe una richiesta alla volta invece di dirlo qui.
+          if curl -sf "$OLLAMA_URL/api/tags" | jq -e '[.models[].name] | any(startswith("bge-m3"))' >/dev/null; then
+            echo "bge-m3 gia' presente"
+          else
+            echo "Scarico bge-m3…"
+            curl -sf -X POST "$OLLAMA_URL/api/pull" -d '{"model":"bge-m3"}' | tail -5
+            curl -sf "$OLLAMA_URL/api/tags" | jq -e '[.models[].name] | any(startswith("bge-m3"))' >/dev/null
+          fi
+
+      - name: Decidi il percorso
+        id: plan
+        shell: bash
+        run: |
+          set -uo pipefail
+          MODE="${{ inputs.mode }}"
+          if [ "$MODE" = "auto" ]; then
+            ingestion/.venv/bin/python -m capsuleers_ingestion.update --check; rc=$?
+            # 0 = SDE invariato, 1 = build nuova. Vedi la regola in testa: una
+            # build nuova impone la ricostruzione completa, non un incrementale.
+            if [ "$rc" = "1" ]; then MODE=full; else MODE=incremental; fi
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Percorso scelto: **$MODE** — motivo: ${{ inputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Percorso COMPLETO: SDE + wormhole (collection nuova, scambio alias),
+      #    poi wiki e missioni ricostruiti DENTRO quella collection.
+      - name: Ricostruzione completa — SDE + wormhole
+        if: steps.plan.outputs.mode == 'full'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ingestion/.venv/bin/python -m capsuleers_ingestion.update --force
+
+      - name: Ricostruzione completa — wiki
+        if: steps.plan.outputs.mode == 'full'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Si ri-scarica invece di riusare il dump esistente: gli aggiornamenti
+          # incrementali scrivono su Qdrant senza toccare il dump, quindi un
+          # dump vecchio reindicizzerebbe un wiki al giorno di ieri e le
+          # modifiche successive non tornerebbero mai piu' — il loro stato dice
+          # che sono gia' state applicate. Perdita di dati silenziosa.
+          ingestion/.venv/bin/python -m capsuleers_ingestion.run --wiki --dump ingestion/data/docs_wiki.jsonl
+          ingestion/.venv/bin/python -m capsuleers_ingestion.run --from-dump ingestion/data/docs_wiki.jsonl
+
+      - name: Ricostruzione completa — missioni
+        if: steps.plan.outputs.mode == 'full'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ingestion/.venv/bin/python -m capsuleers_ingestion.run --missions --dump ingestion/data/docs_missions.jsonl
+          ingestion/.venv/bin/python -m capsuleers_ingestion.run --from-dump ingestion/data/docs_missions.jsonl
+
+      # ── Percorso INCREMENTALE: le tre sorgenti che scrivono in place.
+      - name: Aggiornamento incrementale
+        if: steps.plan.outputs.mode == 'incremental'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ingestion/.venv/bin/python -m capsuleers_ingestion.wiki_update
+          ingestion/.venv/bin/python -m capsuleers_ingestion.wormhole_update
+          # Le missioni costano un giro completo su eve-survival anche solo per
+          # accorgersi che non e' cambiato nulla (rilevamento per hash, non per
+          # API dei cambiamenti). E' il prezzo del loro essere una wiki senza
+          # feed, ed e' qualche minuto.
+          ingestion/.venv/bin/python -m capsuleers_ingestion.missions_update
+
+      - name: Verifica la collection
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sf "$QDRANT_URL/collections/eve_knowledge" -o /tmp/coll.json
+          STATUS=$(jq -r '.result.status' /tmp/coll.json)
+          POINTS=$(jq -r '.result.points_count' /tmp/coll.json)
+          DIM=$(jq -r '.result.config.params.vectors.size' /tmp/coll.json)
+          echo "status=$STATUS points=$POINTS dim=$DIM"
+
+          [ "$STATUS" = "green" ] || { echo "::error::collection non green ($STATUS)"; exit 1; }
+          [ "$DIM" = "$EMBED_DIM" ] || { echo "::error::dimensione $DIM invece di $EMBED_DIM — indice incompatibile con le app installate"; exit 1; }
+          [ "$POINTS" -ge "$MIN_POINTS" ] || {
+            echo "::error::solo $POINTS punti (soglia $MIN_POINTS): il corpus e' incompleto — probabile collection col solo SDE"
+            exit 1; }
+
+          echo "- Collection: **$POINTS** punti, dim $DIM, $STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Esporta e confronta con l'indice gia' pubblicato
+        id: export
+        shell: bash
+        run: |
+          set -euo pipefail
+          ( cd desktop && python3 export_index.py )
+          ingestion/.venv/bin/python -m capsuleers_ingestion.run --names-index desktop/data/names_index.json
+
+          # Invariante esatta, non una soglia: index.vec e' una sequenza di
+          # float32 a 1024 dimensioni, quindi la sua dimensione DEVE essere
+          # righe_del_meta x 1024 x 4. Un export troncato passerebbe qualunque
+          # controllo di «file non vuoto» e verrebbe certificato dal suo stesso
+          # sha256.
+          RIGHE=$(wc -l < desktop/data/index.meta.jsonl)
+          ATTESI=$(( RIGHE * EMBED_DIM * 4 ))
+          REALI=$(stat -c%s desktop/data/index.vec)
+          [ "$ATTESI" = "$REALI" ] || {
+            echo "::error::index.vec e' $REALI byte, attesi $ATTESI per $RIGHE vettori"; exit 1; }
+          echo "Export coerente: $RIGHE vettori, $REALI byte"
+
+          # Se i tre file sono identici a quelli gia' pubblicati non si pubblica
+          # niente: una release nuova sono ~370 MB che OGNI installazione
+          # riscarica al lancio successivo. Non si fa pagare quel traffico per
+          # un indice immutato.
+          UGUALI=1
+          for f in index.vec index.meta.jsonl names_index.json; do
+            NUOVO=$(sha256sum "desktop/data/$f" | cut -d' ' -f1)
+            VECCHIO=$(jq -r --arg n "$f" '.index.files[] | select(.name==$n) | .sha256' desktop/src/assets-manifest.json)
+            [ "$NUOVO" = "$VECCHIO" ] || { echo "$f e' cambiato"; UGUALI=0; }
+          done
+          echo "changed=$([ "$UGUALI" = "1" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+
+      - name: Pubblica la release e aggiorna il manifest
+        if: inputs.publish && steps.export.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # publish-index.sh resta l'unica verita' su COME si pubblica (export,
+          # names index, sha256, manifest, release, commit). Ri-esporta — un paio
+          # di minuti — e va bene cosi': meglio una seconda esportazione che due
+          # descrizioni divergenti della stessa procedura.
+          git config user.name  "capsuleers-bot"
+          git config user.email "bot@capsuleers.app"
+          ops/publish-index.sh
+          echo "- Release pubblicata" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Niente da pubblicare
+        if: steps.export.outputs.changed != 'true'
+        run: |
+          echo "- Indice invariato: nessuna release, nessun traffico verso le installazioni" >> "$GITHUB_STEP_SUMMARY"

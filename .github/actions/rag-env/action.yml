@@ -1,0 +1,93 @@
+name: Ambiente RAG
+description: >
+  Prepara il runner del cluster per un job di ingestione: toolchain sul volume,
+  aggancio della cartella dati persistente, dipendenze Python.
+
+# Perche' un'azione composita e non due blocchi copiati nei due workflow: il
+# check e la pubblicazione DEVONO vedere lo stesso ambiente. Se divergessero, il
+# caso peggiore non e' un errore — e' un check che passa su uno stato che la
+# pubblicazione poi non sa leggere, cioe' un guasto che si manifesta solo nel
+# ramo lungo e raro. Una sola verita', in un file solo.
+
+inputs:
+  data-root:
+    description: Punto di mount del volume persistente del runner.
+    required: false
+    default: /data
+
+runs:
+  using: composite
+  steps:
+    # L'immagine ufficiale del runner e' Ubuntu 24.04 e porta curl, tar, git,
+    # jq, sudo e python3.12 — ma NON pip, NON il modulo venv (Ubuntu lo stacca
+    # in python3-venv) e NON gh. Verificato eseguendo l'immagine, non dedotto.
+    #
+    # Si portano quindi due binari statici sul VOLUME invece di installare
+    # pacchetti a ogni job: `uv` crea l'ambiente virtuale senza aver bisogno di
+    # ensurepip, e `gh` serve alla release. Sul volume perche' il runner e'
+    # effimero — il container riparte a ogni job, il volume no — quindi dal
+    # secondo giro in poi questo passo non tocca la rete.
+    - name: Toolchain (uv + gh) sul volume
+      shell: bash
+      env:
+        UV_VERSION: "0.12.10"
+        GH_VERSION: "2.100.0"
+        DATA_ROOT: ${{ inputs.data-root }}
+      run: |
+        set -euo pipefail
+        BIN="$DATA_ROOT/toolchain/bin"
+        mkdir -p "$BIN"
+
+        if [ ! -x "$BIN/uv" ] || [ "$("$BIN/uv" --version | awk '{print $2}')" != "$UV_VERSION" ]; then
+          echo "Installo uv $UV_VERSION"
+          curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xz -C /tmp
+          install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv "$BIN/uv"
+        fi
+
+        if [ ! -x "$BIN/gh" ] || [ "$("$BIN/gh" --version | head -1 | awk '{print $3}')" != "$GH_VERSION" ]; then
+          echo "Installo gh $GH_VERSION"
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp
+          install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" "$BIN/gh"
+        fi
+
+        echo "$BIN" >> "$GITHUB_PATH"
+        "$BIN/uv" --version
+        "$BIN/gh" --version | head -1
+
+    # `DATA_DIR` in config.py e' `ingestion/data`, cioe' DENTRO il checkout: su
+    # un runner effimero sparirebbe a ogni job, e con essa lo stato che decide
+    # tutto (sde_version.json, wiki_state.json, missions_state.json) piu' la
+    # cache degli embedding, che e' l'unica ragione per cui un aggiornamento
+    # dura minuti invece di ore. Si aggancia al volume con un collegamento
+    # invece di toccare il codice, cosi' la postazione locale resta identica.
+    #
+    # Stesso trattamento per `ingestion/.venv`, che e' esattamente il percorso
+    # che publish-index.sh cerca per scegliere l'interprete: agganciandolo, quel
+    # copione gira nel cluster senza una riga di modifica.
+    - name: Aggancia dati e ambiente virtuale al volume
+      shell: bash
+      env:
+        DATA_ROOT: ${{ inputs.data-root }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$DATA_ROOT/ingestion" "$DATA_ROOT/venv"
+        rm -rf ingestion/data ingestion/.venv
+        ln -s "$DATA_ROOT/ingestion" ingestion/data
+        ln -s "$DATA_ROOT/venv"      ingestion/.venv
+        ls -ld ingestion/data ingestion/.venv
+
+    - name: Dipendenze Python
+      shell: bash
+      env:
+        DATA_ROOT: ${{ inputs.data-root }}
+        UV_CACHE_DIR: ${{ inputs.data-root }}/uv-cache
+      run: |
+        set -euo pipefail
+        # `uv venv` non usa ensurepip, quindi funziona sul python3.12 di sistema
+        # che il modulo venv non ce l'ha. Idempotente: al secondo giro non fa
+        # nulla di percettibile.
+        uv venv --python python3.12 "$DATA_ROOT/venv"
+        uv pip install --python "$DATA_ROOT/venv/bin/python" -e ingestion
+        "$DATA_ROOT/venv/bin/python" -c "import capsuleers_ingestion, httpx, qdrant_client; print('dipendenze ok')"

@@ -3,8 +3,19 @@
 """
 import json, struct, urllib.request, os
 
-URL = "http://localhost:6333/collections/eve_knowledge/points/scroll"
-os.makedirs("data", exist_ok=True)
+# Qdrant non sta sempre su localhost. Sulla postazione che ha sempre fatto
+# l'ingestione si', ma li' `localhost` risolve a ::1 mentre podman rootless
+# espone solo IPv4 — e nel cluster Qdrant e' un Service, non un processo locale.
+# Con l'indirizzo scritto in duro il primo caso obbligava a tenere una COPIA
+# modificata di questo file (fuori dal versionamento, quindi divergente) e il
+# secondo non poteva esportare affatto. Il default lascia invariata ogni
+# invocazione locale esistente.
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333").rstrip("/")
+COLLECTION = os.environ.get("QDRANT_COLLECTION", "eve_knowledge")
+OUT_DIR = os.environ.get("EXPORT_OUT_DIR", "data")
+
+URL = f"{QDRANT_URL}/collections/{COLLECTION}/points/scroll"
+os.makedirs(OUT_DIR, exist_ok=True)
 
 
 def scroll(offset):
@@ -19,7 +30,8 @@ def scroll(offset):
 
 
 n, off = 0, None
-with open("data/index.vec", "wb") as vec, open("data/index.meta.jsonl", "w", encoding="utf-8") as meta:
+with open(os.path.join(OUT_DIR, "index.vec"), "wb") as vec, \
+        open(os.path.join(OUT_DIR, "index.meta.jsonl"), "w", encoding="utf-8") as meta:
     while True:
         res = scroll(off)
         pts = res.get("points", [])
