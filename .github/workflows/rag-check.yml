@@ -49,6 +49,12 @@ jobs:
         id: sources
         shell: bash
         run: |
+          # GitHub invoca la shell con `-e` (`bash --noprofile --norc -e -o
+          # pipefail`), e `set -uo pipefail` NON lo toglie. Qui e' fatale: il
+          # contratto dei `--check` e' «exit 1 = ci sono novita'», quindi il
+          # primo controllo che trova qualcosa farebbe morire il passo proprio
+          # quando ha funzionato. `set +e` va scritto, non sottinteso.
+          set +e
           set -uo pipefail
           PY=ingestion/.venv/bin/python
           CHANGED=""
