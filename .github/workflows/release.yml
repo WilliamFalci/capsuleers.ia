@@ -63,6 +63,12 @@ jobs:
 
       # Backup copy of the artifacts, also useful for workflow_dispatch. The name must be
       # unique per matrix entry (the two windows variants would otherwise collide).
+      # `retention-days: 1` perche' questa copia e' RIDONDANTE: la consegna vera
+      # e' la Release, che electron-builder ha gia' pubblicato col passo sopra
+      # (`--publish always`) e che non scade. Quello che resta qui serve solo a
+      # recuperare un binario da una `workflow_dispatch` nel giro di poche ore.
+      # Il default di 90 giorni terrebbe installer da centinaia di MB per un
+      # trimestre per un caso d'uso che dura un pomeriggio.
       - uses: actions/upload-artifact@v4
         with:
           name: capsuleers-ia-${{ matrix.label }}
@@ -71,3 +77,4 @@ jobs:
             desktop/dist/*.exe
             desktop/dist/latest*.yml
           if-no-files-found: ignore
+          retention-days: 1
