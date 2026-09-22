@@ -221,6 +221,12 @@ SDE-only swap, which would drop wiki/missions):
 - `wormhole_update.py` — `wormhole.json` file-hash (`wormhole_state.json`) → re-index only the
   affected J-space system Documents (new ∪ previous key-set, so removed effects get cleared).
 All three purge a doc's old chunks via `index.delete_by_doc_ids` before re-insert.
+**An SDE bump forces a FULL rebuild (~25 min, wiki + missions re-crawled), and one failed
+wiki fetch aborts all of it.** `wiki/api.py::api_get` retries 6× with 1-2-4-8-16 s backoff
+(~1.5 min window). It was 3× over ~3 s until 2026-09-23, when a single EVE Uni blip
+(`titles=Oracle`) killed the rebuild for SDE 3528119 and the published index stayed on 3503375
+while `rag-check` kept reporting the new build as "seen". After an SDE bump, check that an
+`index-<date>` release actually shipped — a green `rag-check` only means it was *detected*.
 `sde/*` (per-domain parsers: `parse`, `dogma`, `universe`, `industry`, `social`, `facilities`,
 `sites`, `wormholes`), `wiki/` (`api` shared client, `scrape` full+per-title crawler,
 `recentchanges` detector; rate-limited, CC-BY-SA), `missions/eve_survival.py` (full + per-name

@@ -17,8 +17,14 @@ from ..config import USER_AGENT
 from .sources import WikiSource
 
 
-def api_get(source: WikiSource, params: dict, retries: int = 3) -> dict:
-    """One MediaWiki API GET → parsed JSON. Retries transient network errors."""
+def api_get(source: WikiSource, params: dict, retries: int = 6) -> dict:
+    """One MediaWiki API GET → parsed JSON. Retries transient network errors.
+
+    The window is deliberately ~1.5 min (backoff 1, 2, 4, 8, 16 s): a full
+    rebuild crawls thousands of pages over ~25 min and ONE failed page aborts
+    it. With the old 3 tries / ~3 s window a brief wiki hiccup on 2026-09-22
+    (`titles=Oracle`) threw away the whole SDE-triggered rebuild.
+    """
     url = f"{source.api_url}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     last_err: Exception | None = None
@@ -28,7 +34,8 @@ def api_get(source: WikiSource, params: dict, retries: int = 3) -> dict:
                 return json.loads(resp.read().decode("utf-8"))
         except Exception as e:  # noqa: BLE001 — retry on transient network errors
             last_err = e
-            time.sleep(1 + attempt)
+            if attempt < retries - 1:
+                time.sleep(min(30, 2 ** attempt))
     raise RuntimeError(f"Richiesta API fallita: {url}") from last_err
 
 
