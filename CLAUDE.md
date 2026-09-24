@@ -84,6 +84,12 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   source needs a row there**, or it silently lands at L4: `node desktop/tools/verify-source-tiers.mjs`
   fails on any host without one, and measures the nudge on real questions (median top-1↔top-12 gap
   0.087; 0.9 chunks of 12 replaced per question — it reorders the tail, never the head).
+- **Prices come at two levels and are NOT in conflict**: EVE Ref's global reference average (L2) and
+  the live Jita 4-4 order book from Fuzzwork (L3, `jitaPrice` in [`prices.mjs`](desktop/src/prices.mjs),
+  5-min cache = the server's own expiry). Each is its own tagged block and cited source, and the live
+  directive says so explicitly — otherwise "the lower level wins" would make the model prefer the
+  global average over the real Jita price. Prices under 100 ISK keep two decimals (Tritanium 3.82 vs
+  3.65 was rounded to "4 / 4"). The fit analysis block is tagged **L2 · eve-fit-engine**.
 - **Query rules** (`expandQuery`, `intelQuery`, both exported and checked by
   `node desktop/tools/verify-query-rules.mjs`): the killboard-stats trigger needs a word end on
   `stat` — without it "STATus di sicurezza" went to eve-kill as a pilot name and the answer cited the

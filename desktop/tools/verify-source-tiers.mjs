@@ -33,6 +33,7 @@ const cases = [
   [{ source: "ccp_academy", url: "https://www.eveonline.com/eve-academy" }, 1],
   [{ source: "ccp_devdocs", url: "https://developers.eveonline.com/docs/guides/fitting/" }, 1],
   [{ url: "https://everef.net/" }, 2],
+  [{ url: "https://market.fuzzwork.co.uk/" }, 3],
   [{ url: "https://wiki.eveuniversity.org/Warp_Scrambler" }, 3],
   [{ url: "https://www.eve-scout.com/" }, 3], [{ url: "https://eve-kill.com/character/1" }, 3],
   [{ url: "https://evemaps.dotlan.net/map/Delve" }, 3], [{ url: "https://zkillboard.com/" }, 3],

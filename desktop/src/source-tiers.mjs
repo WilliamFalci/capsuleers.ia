@@ -51,6 +51,7 @@ const BY_HOST = [
   ["esi.evetech.net", 1, "ESI"],
   ["eveonline.com", 1, "CCP eveonline.com"],
   ["everef.net", 2, "EVE Ref"],
+  ["market.fuzzwork.co.uk", 3, "Fuzzwork"],
   ["wiki.eveuniversity.org", 3, "EVE University"],
   ["eve-scout.com", 3, "EVE-Scout"],
   ["dotlan.net", 3, "Dotlan"],

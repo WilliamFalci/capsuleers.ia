@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { looksLikeFit, parseEft, describeFit, warmFitEngine } from "./fit.mjs";
-import { priceByName, isKnownType, configureDataDir as pricesDataDir } from "./prices.mjs";
+import { priceByName, jitaPrice, isKnownType, configureDataDir as pricesDataDir } from "./prices.mjs";
 import { intelFor, intelForCandidate } from "./intel.mjs";
 import { corpSummary, characterAffiliation, systemActivity } from "./esi.mjs";
 import { scoutConnections } from "./eve-scout.mjs";
@@ -438,13 +438,27 @@ async function maybeTotalCost(question) {
 }
 
 // If the question is about prices, adds the price of the most relevant item.
+// Two prices, two levels: the EVE Ref global reference (L2, processed official data)
+// and the live Jita 4-4 order book from Fuzzwork (L3). Returned apart so each block
+// carries its own tag and its own cited source.
 async function maybePrice(question, hits) {
-  if (!/\b(prezzo|prezzi|costa|costo|isk|valore|price|cost|value|worth)\b/i.test(question)) return "";
+  const none = { ref: "", jita: "" };
+  if (!/\b(prezzo|prezzi|costa|costo|isk|valore|price|cost|value|worth|jita)\b/i.test(question)) return none;
   const top = hits.find((h) => ["item", "ship", "module", "blueprint"].includes(h.type));
-  if (!top) return "";
+  if (!top) return none;
   const p = await priceByName(top.title);
-  if (!p.found || !(p.average || p.adjusted)) return "";
-  return `Prezzo di riferimento di ${top.title}: ~${Math.round(p.average || p.adjusted).toLocaleString("it-IT")} ISK (media globale, non per-hub).`;
+  // Minerals trade at single-digit ISK: rounding Tritanium's 3.82 to "4" hides
+  // the spread that is the whole point of quoting a buy and a sell price.
+  const fmt = (n) => n < 100
+    ? n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : Math.round(n).toLocaleString("it-IT");
+  const ref = p.found && (p.average || p.adjusted)
+    ? `Prezzo di riferimento di ${top.title}: ~${fmt(p.average || p.adjusted)} ISK (media globale, non per-hub).` : "";
+  const j = p.typeID != null ? await jitaPrice(p.typeID) : null;
+  const jita = j ? `Mercato di Jita 4-4 adesso per ${top.title}: `
+    + [j.sellMin != null ? `miglior vendita ${fmt(j.sellMin)} ISK (${fmt(j.sellVolume)} in vendita)` : "nessun ordine di vendita",
+       j.buyMax != null ? `miglior acquisto ${fmt(j.buyMax)} ISK (${fmt(j.buyVolume)} richiesti)` : "nessun ordine di acquisto"].join(", ") + "." : "";
+  return { ref, jita };
 }
 
 // Reads the index metadata sidecar if present (written at download time): version,
@@ -820,15 +834,15 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // killboard aggregate on the same footing as ESI.
   const liveIntel = [
     [esi.text, "L1 · ESI"],
-    [totalCost, "L2 · EVE Ref"], [priceInfo, "L2 · EVE Ref"],
+    [totalCost, "L2 · EVE Ref"], [priceInfo.ref, "L2 · EVE Ref"], [priceInfo.jita, "L3 · Fuzzwork (Jita)"],
     [mcp.text, "L3 · eve-kill"], [intel.text, "L3 · eve-kill"], [scout.text, "L3 · EVE-Scout"],
   ].filter(([t]) => t).map(([t, tag]) => `[${tag}]\n${t}`).join("\n\n");
   // End-of-prompt directives (highest salience), one per active source. Gating +
   // IT/EN text live together, so adding a source is one row here.
   const directives = [
     { on: !!liveIntel,
-      it: "\nIMPORTANTE: il CONTESTO include DATI LIVE (ESI = L1, prezzi EVE Ref = L2, killboard/EVE-Scout = L3): rispondi usandoli, NON dire che l'informazione manca; se contraddicono un altro blocco, vale il livello più basso.",
-      en: "\nIMPORTANT: the CONTEXT includes LIVE DATA (ESI = L1, EVE Ref prices = L2, killboard/EVE-Scout = L3): answer using it, do NOT say the information is missing; if it contradicts another block, the lower level wins." },
+      it: "\nIMPORTANTE: il CONTESTO include DATI LIVE (ESI = L1, prezzi EVE Ref = L2, mercato di Jita Fuzzwork / killboard / EVE-Scout = L3): rispondi usandoli, NON dire che l'informazione manca; se contraddicono un altro blocco, vale il livello più basso. I due prezzi NON si contraddicono: EVE Ref è una media globale di riferimento, Fuzzwork è il prezzo attuale a Jita — per quanto costa comprare/vendere adesso usa Jita, e riportali entrambi se presenti. Non scrivere le etichette L1/L2/L3 nella risposta: nomina la fonte (ESI, EVE Ref, Jita).",
+      en: "\nIMPORTANT: the CONTEXT includes LIVE DATA (ESI = L1, EVE Ref prices = L2, Fuzzwork Jita market / killboard / EVE-Scout = L3): answer using it, do NOT say the information is missing; if it contradicts another block, the lower level wins. The two prices do NOT contradict each other: EVE Ref is a global reference average, Fuzzwork is the current Jita price — for what it costs to buy/sell now use Jita, and report both when present. Do not write the L1/L2/L3 labels in the answer: name the source (ESI, EVE Ref, Jita)." },
     { on: !!(mcp.cards || mcp.kills || intel.card),
       it: "\nI risultati dettagliati sono mostrati come SCHEDA/LISTA sotto la tua risposta: scrivi SOLO una breve frase introduttiva (1 riga), NON elencare i singoli risultati e NON ripetere i numeri.",
       en: "\nThe detailed results are shown as a CARD/LIST below your answer: write ONLY a short one-line intro, do NOT enumerate the individual results and do NOT repeat the numbers." },
@@ -848,7 +862,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const directiveText = directives.filter((d) => d.on).map((d) => (qLang === "it" ? d.it : d.en)).join("");
   const userMsg = `${histText}CONTESTO:\n`
     + (liveIntel ? `[DATI LIVE]\n${liveIntel}\n\n` : "")
-    + (fitInfo ? `[ANALISI DEL FIT — dati autorevoli]\n${fitInfo}\n\n` : "")
+    // eve-fit-engine computes the fit from the SDE with Pyfa parity: processed official
+    // data, i.e. L2 — same level as EVE Ref, above every community guide.
+    + (fitInfo ? `[L2 · eve-fit-engine — ANALISI DEL FIT, dati autorevoli]\n${fitInfo}\n\n` : "")
     + `${context}\n`
     + `DOMANDA: ${question}\n\n${(LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en)}${directiveText}`;
 
@@ -914,7 +930,8 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   }
   if (esi.text) apiSources.push({ title: "ESI · API ufficiale di EVE Online", type: "api", url: "https://esi.evetech.net/" });
   if (scout.text) apiSources.push({ title: "EVE-Scout · collegamenti Thera/Turnur", type: "api", url: "https://www.eve-scout.com/" });
-  if (priceInfo || totalCost) apiSources.push({ title: "EVE Ref · prezzi di mercato", type: "api", url: "https://everef.net/" });
+  if (priceInfo.ref || totalCost) apiSources.push({ title: "EVE Ref · prezzi di mercato", type: "api", url: "https://everef.net/" });
+  if (priceInfo.jita) apiSources.push({ title: "Fuzzwork · mercato di Jita 4-4 (live)", type: "api", url: "https://market.fuzzwork.co.uk/" });
 
   let sources;
   if (mcp.text || intel.text || esi.text || scout.text) {
