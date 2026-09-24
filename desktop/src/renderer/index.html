@@ -398,6 +398,13 @@
     .ls-chips::-webkit-scrollbar-thumb { background: #2a2f38; }
     .ls-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
       background: #0f1318; border: 1px solid var(--line); }
+    /* Chips are filter buttons: click isolates that alliance's pilots, click again releases */
+    button.ls-chip { font: inherit; color: inherit; cursor: pointer; }
+    button.ls-chip:hover { border-color: var(--orange-dim); }
+    button.ls-chip:focus-visible { outline: 1px solid var(--orange); outline-offset: 1px; }
+    .ls-chips.filtering button.ls-chip:not(.on) { opacity: .45; }
+    button.ls-chip.on { border-color: var(--orange); background: rgba(255,255,255,.06); }
+    button.ls-chip.on .ct { color: var(--orange); }
     .ls-chip img { width: 16px; height: 16px; border-radius: 2px; background: #0a0b0d; }
     .ls-chip .ph { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
     .ls-chip .ph svg { width: 13px; height: 13px; }
@@ -1153,12 +1160,37 @@
       return { allianceCount: allies_.length, corpCount: corpKeys.size, pilotCount: rows.length, allies: allies_ };
     }
     const NOALLY_ICON = '<span class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-5 0-9 2.5-9 6v2h18v-2c0-3.5-4-6-9-6Z"/></svg></span>';
+    // Alliance filter: the chips narrow the pilot list to one alliance (keyed by the
+    // same name aggregateLocal groups on, so "No Alliance" filters too). Reset on every new scan.
+    let _localRows = [], _allyFilter = null;
+    const allyKey = (r) => r.allianceName || L.noAlliance;
+    function renderLocalRows() {
+      const rows = _allyFilter == null ? _localRows : _localRows.filter((r) => allyKey(r) === _allyFilter);
+      localBody.innerHTML = "";
+      for (const r of rows) localBody.appendChild(localRow(r));
+      const chips = localSummary.querySelector(".ls-chips");
+      if (chips) {
+        chips.classList.toggle("filtering", _allyFilter != null);
+        for (const b of chips.querySelectorAll("button.ls-chip")) {
+          const on = b.dataset.ally === _allyFilter;
+          b.classList.toggle("on", on);
+          b.setAttribute("aria-pressed", on ? "true" : "false");
+        }
+      }
+    }
+    localSummary.addEventListener("click", (e) => {
+      const b = e.target.closest("button.ls-chip");
+      if (!b) return;
+      _allyFilter = _allyFilter === b.dataset.ally ? null : b.dataset.ally;
+      renderLocalRows();
+      localBody.scrollTop = 0;
+    });
     function renderLocalSummary(rows) {
       if (!rows || !rows.length) { localSummary.hidden = true; localSummary.innerHTML = ""; return; }
       const s = aggregateLocal(rows);
       const chips = s.allies.map((a) => {
         const logo = a.id ? `<img src="${IMG}/alliances/${a.id}/logo?size=32" alt="" />` : NOALLY_ICON;
-        return `<span class="ls-chip" title="${esc(a.name)}">${logo}<span class="nm">${esc(a.name)}</span><span class="ct">[${a.count}]</span></span>`;
+        return `<button type="button" class="ls-chip" data-ally="${esc(a.name)}" aria-pressed="false" title="${esc(a.name)}">${logo}<span class="nm">${esc(a.name)}</span><span class="ct">[${a.count}]</span></button>`;
       }).join("");
       localSummary.innerHTML =
         `<div class="ls-stats">` +
@@ -1174,6 +1206,7 @@
     capsuleers.local.onStart(({ total }) => {
       openLocal();
       localSummary.hidden = true;
+      _localRows = []; _allyFilter = null;
       localSub.textContent = L.localResolving(total);
       localBody.innerHTML = `<div class="local-prog">${L.loadingIntel} <span id="lp">0</span>/${total}` +
         `<div class="local-bar"><i id="lpbar"></i></div></div>`;
@@ -1191,8 +1224,8 @@
         (res.capped ? L.resolvedOf(res.resolved, res.total) : "") +
         (danger ? L.dangerousCount(danger) : "");
       renderLocalSummary(res.rows);
-      localBody.innerHTML = "";
-      for (const r of res.rows) localBody.appendChild(localRow(r));
+      _localRows = res.rows; _allyFilter = null;
+      renderLocalRows();
     });
 
     // ── Share the intel + history of generated links ─────────────────────────
