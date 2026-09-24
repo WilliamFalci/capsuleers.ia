@@ -105,10 +105,13 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
 
 - [`prices.mjs`](desktop/src/prices.mjs) — EVE Ref reference prices (`priceByName`, `isKnownType`).
 - [`capsuleers-api.mjs`](desktop/src/capsuleers-api.mjs) — **capsuleers.app is the killboard/intel
-  backend**, and this is the only file that knows its routes (several still sit under the site's legacy
-  `/api/eve-kill/` prefix while reading its OWN archive: a rename is one edit here). Every call returns
-  `null` on any failure and the caller falls back to eve-kill direct, so a site outage degrades to the
-  old behaviour. Measured: a 62-name Local takes **0.9-1.7 s via the site vs 30 s via eve-kill**
+  backend**, through the site's **public API v1** (`/api/v1/…`, contract in the site's
+  `shared/api-v1.ts`: stable paths and shapes, rate-limited per IP and class, 404 "no such entity" kept
+  apart from 503 "upstream unwell"). This is the only file that knows the routes. **Deploy order does not
+  matter**: every v1 response carries `X-Capsuleers-Api`, and a response without it means the site in
+  production predates v1 — the call is retried on the legacy route serving the same data and the verdict
+  is remembered (`apiFamily()`). Every call returns `null` on any failure and the caller falls back to
+  eve-kill direct, so a site outage degrades to the old behaviour. Measured: a 62-name Local takes **0.9-1.7 s via the site vs 30 s via eve-kill**
   (one scan request instead of ~3 per pilot). `node desktop/tools/verify-intel-backend.mjs` checks both
   paths live (`CAPSULEERS_SITE=http://127.0.0.1:9 … --fallback` for the eve-kill one).
 - [`intel.mjs`](desktop/src/intel.mjs) — pilot/corp/alliance intel. Names → ids via **ESI

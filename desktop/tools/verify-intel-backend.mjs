@@ -4,6 +4,7 @@
 //   CAPSULEERS_SITE=http://127.0.0.1:9 node tools/verify-intel-backend.mjs --fallback
 const FALLBACK = process.argv.includes("--fallback");
 const { localIntel, intelFor, characterDetail } = await import("../src/intel.mjs");
+const { apiFamily } = await import("../src/capsuleers-api.mjs");
 
 let fail = 0;
 const ok = (cond, msg) => { console.log(`${cond ? "✓" : "✗"} ${msg}`); if (!cond) fail++; };
@@ -52,4 +53,7 @@ ok(kinds.includes("character") && kinds.some((k) => k !== "character"), `ticker 
 const d = await characterDetail({ name: "TremalJack" });
 ok(d && d.kills > 1000 && d.play && d.partners.length, "dettaglio pilota: totali, stile e compagni");
 
+// Which API family answered: "v1" once the site ships /api/v1, "legacy" before
+// (detected from the missing X-Capsuleers-Api header), "unknown" if the site was down.
+console.log(`famiglia API del sito: ${apiFamily()}`);
 process.exit(fail ? 1 : 0);
