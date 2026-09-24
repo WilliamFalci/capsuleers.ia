@@ -237,7 +237,10 @@ async function fitCost(fit) {
 
 // Live intel (eve-kill): detect the intent and the name of the entity to look up.
 function _cleanName(s) {
-  return s.replace(/[?.!,;]+$/g, "")
+  // A name ends at the first "?" or "!": "Goonswarm Federation? battaglie recenti"
+  // is the name plus a follow-up request, and the whole string resolves nowhere
+  // on ESI (exact names only).
+  return s.replace(/[?!].*$/s, "").replace(/[?.!,;]+$/g, "")
     .replace(/\b(in eve(\s+online)?|la corp(orazione)?|l['’]alleanza|il (personaggio|pilota|player)|the (character|pilot|player|corp(oration)?|alliance))\b/gi, "")
     .trim();
 }
@@ -835,7 +838,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   const liveIntel = [
     [esi.text, "L1 · ESI"],
     [totalCost, "L2 · EVE Ref"], [priceInfo.ref, "L2 · EVE Ref"], [priceInfo.jita, "L3 · Fuzzwork (Jita)"],
-    [mcp.text, "L3 · eve-kill"], [intel.text, "L3 · eve-kill"], [scout.text, "L3 · EVE-Scout"],
+    [mcp.text, "L3 · eve-kill"], [intel.text, `L3 · ${intel.source?.title?.split(" · ")[0] || "eve-kill"}`], [scout.text, "L3 · EVE-Scout"],
   ].filter(([t]) => t).map(([t, tag]) => `[${tag}]\n${t}`).join("\n\n");
   // End-of-prompt directives (highest salience), one per active source. Gating +
   // IT/EN text live together, so adding a source is one row here.
@@ -926,7 +929,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   if (mcp.text) apiSources.push({ title: mcp.sourceTitle || "eve-kill · MCP (dati live)", type: "api", url: mcp.source || "https://eve-kill.com/" });
   if (intel.text) {
     const e = intel.entities[0];
-    apiSources.push({ title: "eve-kill.com · killboard live", type: "api", url: e ? `https://eve-kill.com/${e.type}/${e.id}` : "https://eve-kill.com/" });
+    apiSources.push(intel.source
+      ? { title: intel.source.title, type: "api", url: intel.source.url }
+      : { title: "eve-kill.com · killboard live", type: "api", url: e ? `https://eve-kill.com/${e.type}/${e.id}` : "https://eve-kill.com/" });
   }
   if (esi.text) apiSources.push({ title: "ESI · API ufficiale di EVE Online", type: "api", url: "https://esi.evetech.net/" });
   if (scout.text) apiSources.push({ title: "EVE-Scout · collegamenti Thera/Turnur", type: "api", url: "https://www.eve-scout.com/" });

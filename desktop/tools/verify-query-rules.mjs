@@ -14,6 +14,9 @@ for (const [q, want] of [
   ["stats for Goonswarm Federation", "Goonswarm Federation"],
   ["dammi le statistics di Pandemic Horde", "Pandemic Horde"],
   ["kills di Vily", "Vily"],
+  // The name ends at "?": what follows is a follow-up request, not part of the name.
+  ["Chi è Goonswarm Federation? battaglie recenti", "Goonswarm Federation"],
+  ["chi è TremalJack?", "TremalJack"],
 ]) ok(intelQuery(q) === want, `intelQuery(${JSON.stringify(q)}) = ${JSON.stringify(intelQuery(q))}`);
 
 // 2. Italian "ore" = hours; EVE "ore" = what you mine. Replaced only in an Italian
@@ -27,7 +30,20 @@ for (const [q, mine] of [
   ["How much ore is in an asteroid belt?", false],
 ]) ok(expandQuery(q).includes("minerale (ore)") === mine, `expandQuery(${JSON.stringify(q)}) → ${JSON.stringify(expandQuery(q))}`);
 
-// 3. The slang expansion still works.
+// 3. Global "recent battles" (eve-kill find_battles) only when NO entity is named —
+//    otherwise the question is about that entity's battles (intel.mjs, site data).
+import fs from "node:fs";
+const src = fs.readFileSync(new URL("../src/mcp-intel.mjs", import.meta.url), "utf8");
+const namesEntity = new Function("q", "return " + src.match(/const namesEntity = ([\s\S]*?);\n/)[1]);
+for (const [q, want] of [
+  ["Chi è Goonswarm Federation? battaglie recenti", true],   // "è" is not a \b word char in JS
+  ["ultime battaglie di Goonswarm", true],
+  ["who is Pandemic Horde, recent battles", true],
+  ["quali sono le battaglie recenti più grandi?", false],
+  ["recent battles", false],
+]) ok(namesEntity(q) === want, `battaglie: ${JSON.stringify(q)} nomina un'entità = ${namesEntity(q)}`);
+
+// 4. The slang expansion still works.
 ok(expandQuery("cosa è il sov").includes("sovereignty"), "sov → sovereignty");
 
 process.exit(fail ? 1 : 0);

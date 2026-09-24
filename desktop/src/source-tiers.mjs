@@ -60,6 +60,7 @@ const BY_HOST = [
   ["ellatha.com", 3, "Ellatha"],
   ["fuzzwork.co.uk", 3, "Fuzzwork"],
   ["eve-kill.com", 3, "eve-kill"],
+  ["capsuleers.app", 3, "capsuleers.app"],
   ["zkillboard.com", 3, "zKillboard"],
   ["sistersprobe.fandom.com", 4, "Sisters Probe Wiki (Fandom)"],
   ["fandom.com", 4, "EVE Wiki (Fandom)"],

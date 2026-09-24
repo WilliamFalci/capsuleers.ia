@@ -848,7 +848,7 @@
         Fenris Creations non è in alcun modo responsabile del contenuto o del funzionamento di questa
         applicazione, né può essere ritenuta responsabile per eventuali danni derivanti dal suo utilizzo.</p>
         <p data-i18n-html="aboutDisc3">Dati e servizi: EVE Static Data Export ed ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA),
-        eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref (prezzi), eve-kill (killboard + analisi MCP) ed EVE-Scout (Thera/Turnur).
+        eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref e Fuzzwork (prezzi), capsuleers.app (killboard e intel), eve-kill (analisi MCP) ed EVE-Scout (Thera/Turnur).
         Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.</p>
       </div>
     </div>
@@ -1123,7 +1123,7 @@
       const alliTk = r.allianceTicker ? `<span class="tk alli">&lt;${esc(r.allianceTicker)}&gt;</span>` : "";
       const corpTk = r.corpTicker ? `<span class="tk corp">[${esc(r.corpTicker)}]</span>` : "";
       const kd = r.found
-        ? `${L.killAbbr} ${r.kills ?? 0} / ${L.lossAbbr} ${r.losses ?? 0}${r.eff != null ? " · " + r.eff + "%" : ""}`
+        ? `${L.killAbbr} ${r.kills ?? 0} / ${L.lossAbbr} ${r.losses ?? 0}${r.eff != null ? " · " + r.eff + "%" : ""}${r.window ? " · " + L.windowDays(r.window) : ""}`
         : L.notFound;
       const flags = (r.flags || []).map((f) =>
         `<span class="lflag${HOT_FLAGS.test(f) ? " hot" : ""}">${esc(f)}</span>`).join("");
@@ -2254,7 +2254,7 @@
         aboutCredit: 'Creato da <a href="https://capsuleers.app/it/character/789877270" target="_blank" rel="noopener">TremalJack</a> e dal supporto della community di EVE Online.',
         aboutDisc1: "<b>Strumento non ufficiale</b> creato da fan, non affiliato né approvato da Fenris Creations.",
         aboutDisc2: "EVE Online e il logo EVE sono marchi registrati di Fenris Creations. Tutti i diritti riservati. Tutti i nomi di prodotti, loghi e marchi citati appartengono ai rispettivi proprietari. Fenris Creations non è in alcun modo responsabile del contenuto o del funzionamento di questa applicazione, né può essere ritenuta responsabile per eventuali danni derivanti dal suo utilizzo.",
-        aboutDisc3: "Dati e servizi: EVE Static Data Export ed ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref (prezzi), eve-kill (killboard + analisi MCP), EVE Workbench (fit della community) ed EVE-Scout (Thera/Turnur). Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.",
+        aboutDisc3: "Dati e servizi: EVE Static Data Export ed ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (missioni PvE), Anoikis (wormhole), EVE Ref e Fuzzwork (prezzi), capsuleers.app (killboard e intel), eve-kill (analisi MCP), EVE Workbench (fit della community) ed EVE-Scout (Thera/Turnur). Le risposte sono generate da un'IA locale e possono contenere errori: <b>verifica sempre in gioco</b>.",
         modelsTitle: "MODELLO <b>IA</b>",
         modelsHint: "Stima sulla VRAM <b>libera ora</b>: più layer entrano in GPU, più la risposta è veloce. Chiudere altre app che usano la GPU (browser, Steam…) libera VRAM e accelera i modelli più grandi. I tempi sono indicativi per una risposta tipica.<br>Il modello che scegli diventa il <b>predefinito</b> e verrà riusato a ogni riavvio dell'app.",
         wipeBtn: "Rimuovi tutti i dati e i modelli",
@@ -2269,7 +2269,7 @@
         localShowIntel: "Mostra intel",
         danger: ["sconosciuto", "basso", "medio", "alto"],
         intelDetail: "Dettaglio intel", notFound: "nessuna attività PvP negli ultimi 90 giorni",
-        killAbbr: "K", lossAbbr: "P",
+        killAbbr: "K", lossAbbr: "P", windowDays: (n) => `${n}g`,
         localResolving: (n) => `risoluzione di ${n} piloti…`,
         loadingIntel: "Carico l'intel…",
         pilotsCount: (n) => `${n} piloti`,
@@ -2374,7 +2374,7 @@
         aboutCredit: 'Created by <a href="https://capsuleers.app/en/character/789877270" target="_blank" rel="noopener">TremalJack</a> with the support of the EVE Online community.',
         aboutDisc1: "<b>Unofficial tool</b> made by fans, not affiliated with nor endorsed by Fenris Creations.",
         aboutDisc2: "EVE Online and the EVE logo are registered trademarks of Fenris Creations. All rights reserved. All product names, logos and brands mentioned are property of their respective owners. Fenris Creations is in no way responsible for the content or operation of this application, nor can it be held liable for any damage arising from its use.",
-        aboutDisc3: "Data & services: EVE Static Data Export and ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (PvE missions), Anoikis (wormholes), EVE Ref (prices), eve-kill (killboard + MCP analytics), EVE Workbench (community fits) and EVE-Scout (Thera/Turnur). Answers are generated by a local AI and may contain errors: <b>always verify in-game</b>.",
+        aboutDisc3: "Data & services: EVE Static Data Export and ESI (Fenris Creations), EVE University Wiki (CC BY-NC-SA), eve-survival (PvE missions), Anoikis (wormholes), EVE Ref and Fuzzwork (prices), capsuleers.app (killboard and intel), eve-kill (MCP analytics), EVE Workbench (community fits) and EVE-Scout (Thera/Turnur). Answers are generated by a local AI and may contain errors: <b>always verify in-game</b>.",
         modelsTitle: "<b>AI</b> MODEL",
         modelsHint: "Estimate on the VRAM <b>free now</b>: the more layers fit in GPU, the faster the reply. Closing other apps that use the GPU (browser, Steam…) frees VRAM and speeds up bigger models. Times are indicative for a typical answer.<br>The model you choose becomes the <b>default</b> and is reused on every app restart.",
         wipeBtn: "Remove all data and models",
@@ -2389,7 +2389,7 @@
         localShowIntel: "Show intel",
         danger: ["unknown", "low", "medium", "high"],
         intelDetail: "Intel details", notFound: "no PvP activity in the last 90 days",
-        killAbbr: "K", lossAbbr: "L",
+        killAbbr: "K", lossAbbr: "L", windowDays: (n) => `${n}d`,
         localResolving: (n) => `resolving ${n} pilots…`,
         loadingIntel: "Loading intel…",
         pilotsCount: (n) => `${n} pilots`,

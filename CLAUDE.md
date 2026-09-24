@@ -104,8 +104,27 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
 ### Live-data feature modules (`desktop/src/`)
 
 - [`prices.mjs`](desktop/src/prices.mjs) — EVE Ref reference prices (`priceByName`, `isKnownType`).
-- [`intel.mjs`](desktop/src/intel.mjs) — eve-kill killboard pilot/corp/alliance intel; plus
-  the clipboard-scan paths: `localIntel()` (per-pilot eve-kill intel for a Local roster),
+- [`capsuleers-api.mjs`](desktop/src/capsuleers-api.mjs) — **capsuleers.app is the killboard/intel
+  backend**, and this is the only file that knows its routes (several still sit under the site's legacy
+  `/api/eve-kill/` prefix while reading its OWN archive: a rename is one edit here). Every call returns
+  `null` on any failure and the caller falls back to eve-kill direct, so a site outage degrades to the
+  old behaviour. Measured: a 62-name Local takes **0.9-1.7 s via the site vs 30 s via eve-kill**
+  (one scan request instead of ~3 per pilot). `node desktop/tools/verify-intel-backend.mjs` checks both
+  paths live (`CAPSULEERS_SITE=http://127.0.0.1:9 … --fallback` for the eve-kill one).
+- [`intel.mjs`](desktop/src/intel.mjs) — pilot/corp/alliance intel. Names → ids via **ESI
+  `/universe/ids`** (L1, exact, every matching category = the disambiguation), with eve-kill search
+  merged in for ticker-like queries (≤5 chars, no space: "CONDI" is a pilot's name AND an alliance
+  ticker, and ESI cannot search tickers) and as the fallback for partial names. Pilot: lifetime totals
+  from the site's `profile` (eve-kill behind the site's cache) + 90-day intel from its archive; the pilot
+  card is built from those (no `capsuleer_dossier` call; that MCP tool is only the fallback). Corp /
+  alliance: site `stats/alltime`; kills/losses: site `killboard/search`; battles: site entity panels.
+  **The two windows are labelled on every line** ("Totali DI SEMPRE", "ultimi 90 giorni"): unlabelled,
+  the model presented 6 224 lifetime kills as 90-day activity.
+  The clipboard-scan paths: `localIntel()` (ESI ids + ONE site scan + ESI bulk affiliations; the
+  numbers are the last **90 days**, `window: 90` on the row, "90g" in the UI; the danger thresholds are
+  therefore 30/150 kills, not the lifetime 100/500 — measured on 30 real pilots, 20 of 30 same class, the
+  rest being idle veterans a Local should NOT flag; the scan's `efficiency` is a kill/loss COUNT ratio,
+  never shown as ISK efficiency),
   `analyzeDScan()` (offline D-Scan composition via the bundled `eve-fit-engine` SDE —
   `dataset.getType`→`groups`→`categories`; the SDE only bundles **fittable** types so
   celestials/deployables fall into "Others", but ship classes resolve perfectly + the
@@ -311,7 +330,7 @@ Hardened 2026-06-29 — full write-up in [`docs/security-review-2026-06-29.md`](
 - **Electron fuses** are flipped at pack time via `electronFuses:` in `electron-builder.yml` (inherited by the per-GPU variant configs through `extends`): `runAsNode` / `enableNodeOptionsEnvironmentVariable` / `enableNodeCliInspectArguments` off, `onlyLoadAppFromAsar` on. `enableEmbeddedAsarIntegrityValidation` is deliberately **off** pending a tested Windows build — flip + verify a Windows install before enabling.
 - **Destructive bridge actions need a main-side gate.** `data:wipe-all` shows a main-process confirmation `dialog` before wiping (the renderer prompt is advisory). Backed by `wipe*` keys in `MSTR` (it/en).
 - **Model-file handlers reject path traversal.** Both `deleteModelFile` and `setModel` require a bare `*.gguf` basename (`^[^/\\]+\.gguf$`) before `path.join(MODELS_DIR, …)`. Keep the guard on any new handler that joins a bridge-supplied filename.
-- **No hidden egress.** `ask()` is 100% local; eve-kill/ESI lookups are consented; capsuleers.app is hit only on an explicit Share. Don't add telemetry.
+- **No hidden egress.** Generation is 100% local; intel lookups (capsuleers.app, ESI, eve-kill as fallback and for the MCP analytics) are consented — the consent text in `main.mjs` names all three. Don't add telemetry.
 
 ## Notes
 

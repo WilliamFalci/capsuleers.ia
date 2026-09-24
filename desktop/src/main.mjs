@@ -47,7 +47,8 @@ const MSTR = {
     consentDetail: "Quando è attivo, Capsuleers.IA controlla il testo che copi (Ctrl+C) e, se " +
       "riconosce una lista di piloti (la Local di EVE), ti chiede se vuoi l'intel.\n\n" +
       "Questo comporta la LETTURA degli appunti mentre la funzione è attiva. Nessun " +
-      "dato viene inviato a terzi se non i nomi dei piloti verso eve-kill.com per l'intel. " +
+      "dato viene inviato a terzi se non i nomi dei piloti, verso ESI (Fenris Creations) " +
+      "per risolverli e verso capsuleers.app per l'intel (eve-kill.com solo se il sito non risponde). " +
       "Puoi disattivarla in ogni momento dal tray.",
     btnCancel: "Annulla", btnEnable: "Attiva", dontAsk: "Non chiedere più",
     notifTitle: "Rilevata Local di EVE",
@@ -87,7 +88,8 @@ const MSTR = {
     consentDetail: "When on, Capsuleers.IA inspects the text you copy (Ctrl+C) and, if it " +
       "recognizes a list of pilots (EVE's Local), asks whether you want the intel.\n\n" +
       "This entails READING the clipboard while the feature is on. No data is sent to " +
-      "third parties except the pilot names to eve-kill.com for the intel. " +
+      "third parties except the pilot names, to ESI (Fenris Creations) to resolve them and " +
+      "to capsuleers.app for the intel (eve-kill.com only if the site does not answer). " +
       "You can disable it at any time from the tray.",
     btnCancel: "Cancel", btnEnable: "Enable", dontAsk: "Don't ask again",
     notifTitle: "EVE Local detected",
@@ -351,7 +353,7 @@ function runScan(payload) {
   else runLocalIntel(payload.names);
 }
 
-// Local roster → per-pilot eve-kill intel (incremental results to the renderer).
+// Local roster → pilot intel from capsuleers.app (eve-kill fallback), results to the renderer.
 async function runLocalIntel(names) {
   win?.webContents.send("local:start", { total: names.length });
   try {

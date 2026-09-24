@@ -676,7 +676,13 @@ export async function maybeMcp(question, standalone = question) {
           return card ? { ...body, cards: card } : body;
         }
       }
-      if (/\b(ultime?\s+battagli\w*|battagli\w*\s+(?:recenti|più\s+grandi|grosse)|recent\s+battles?|biggest\s+battles?|latest\s+battles?|grandi\s+battagli\w*)\b/i.test(q)) {
+      // GLOBAL battles only when no entity is named: "chi è X? battaglie recenti" or
+      // "ultime battaglie di Goonswarm" are about X, and belong to the entity intel
+      // (intel.mjs, battles from capsuleers.app) — not to New Eden's latest fights.
+      // No trailing \b: to JS "è" is not a word character, so "chi è\b" never matches.
+      const namesEntity = /\b(?:chi\s+(?:è|e|sono)|who\s+(?:is|are)|parlami|tell\s+me\s+about)(?=[\s?!.,]|$)/i.test(q)
+        || /\b(?:di|del|della|dei|degli|of|for|by)\s+[A-Z0-9][\w.'-]*/.test(q);
+      if (!namesEntity && /\b(ultime?\s+battagli\w*|battagli\w*\s+(?:recenti|più\s+grandi|grosse)|recent\s+battles?|biggest\s+battles?|latest\s+battles?|grandi\s+battagli\w*)\b/i.test(q)) {
         const recent = /\b(recenti|recent|latest|ultime)\b/i.test(q);
         const d = await callTool("find_battles", { sort: recent ? "recent" : "isk" });
         if (!d) return EMPTY;
