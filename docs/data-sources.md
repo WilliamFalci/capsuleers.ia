@@ -12,7 +12,7 @@ prompt rule, cited-source chips).
 
 | Level | Meaning | In use |
 |---|---|---|
-| **L1** — primary | CCP itself: documentation, Support, SDE, ESI, patch notes, developer posts | SDE (indexed), patch notes + dev blogs since 2019 (indexed, dated), ESI (live). *Not yet ingested: documentation, Support.* |
+| **L1** — primary | CCP itself: documentation, Support, SDE, ESI, patch notes, developer posts | SDE, patch notes + dev blogs since 2019 (dated), CCP Support, EVE Academy, the guides of CCP's developer docs (all indexed); ESI (live) |
 | **L2** — processed official data | tools that declare CCP/SDE/ESI provenance | EVE Ref (prices) |
 | **L3** — structured community | EVE University, EVE Scout, Dotlan, Anoik.is, Ellatha, Fuzzwork, EVE-Kill, zKillboard, other specialised databases/tools | EVE University, Anoikis, EVE-Scout, eve-kill |
 | **L4** — general community | prose wikis and guides without a structured data model | EVE Wiki + Sisters Probe Wiki (Fandom), eve-survival, Riley (opt-in), EVE Workbench fits |
@@ -25,6 +25,9 @@ there: the tier is per document, not per line.
 | Source | What it provides | Type | Status |
 |---|---|---|---|
 | **CCP patch notes + dev blogs** (eveonline.com via Contentful CDA) | balance changes, features, fixes, design rationale — each dated | static, dated (© CCP) | ✅ indexed (since 2019, incremental daily) |
+| **CCP Support** (support.eveonline.com, Zendesk API) | official rules: Crimewatch, asset safety, downtime, structures, sov, EULA/ToS, client | static (© CCP) | ✅ indexed (incremental daily) |
+| **EVE Academy** (eveonline.com/eve-academy, Contentful) | CCP's player guides: combat mechanics, careers, ship primers, industry | static (© CCP) | ✅ indexed (incremental daily) |
+| **CCP developer docs — guides** (github.com/esi/esi-docs `docs/guides`) | formulae (warp-in points), security rounding/classes, route calculation, fitting formats, PI, SKINR | static (© CCP) | ✅ indexed (incremental daily) |
 | **Official Fenris Creations SDE** (JSONL) | skills, items, ships, modules, dogma, universe, blueprints, lore, sites/anomalies | static | ✅ indexed |
 | **EVE University Wiki** | guides, terminology, mechanics, missions, wormholes, exploration | static (CC BY-NC-SA 4.0) | ✅ indexed |
 | **EVE Sister Core Scanner Probe Wiki** (Fandom, DE) | exploration sites: anomalies, signatures, relic & data sites | static (CC-BY-SA) | ✅ indexed |

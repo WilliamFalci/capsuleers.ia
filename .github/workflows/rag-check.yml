@@ -88,8 +88,9 @@ jobs:
           interroga update          sde
           interroga wiki_update     wiki
           interroga wormhole_update wormhole
-          # Patch notes e dev blog CCP: due query di elenco su Contentful, nessun
-          # corpo — abbastanza leggero da farlo ogni giorno.
+          # Fonti CCP (patch notes, dev blog, Support, EVE Academy, guide sviluppatori):
+          # solo elenchi con timbro di versione, nessun corpo — leggero abbastanza da
+          # farlo ogni giorno.
           interroga ccp_update      ccp
 
           # Le missioni solo di domenica. Il loro `--check` non ha un'API di

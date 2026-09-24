@@ -75,10 +75,21 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   index releases published before `source` was exported (only SDE chunks have `url: null`).
   **Dated L1 sources (CCP patch notes, dev blogs) get NO retrieval nudge** (`bonusOf`): they stay L1
   for the tag and the conflict rule, but describe a change as of their date and may be superseded —
-  and the SYSTEM prompt says SDE/ESI beat them, and among them the newest wins. **A new
+  and the SYSTEM prompt says SDE/ESI beat them, and among them the newest wins. Support, EVE Academy
+  and the dev-docs guides describe the CURRENT game and get the full L1 nudge. The retrieved blocks
+  enter the context **sorted by tier** (stable within a tier): a 4B model weighs the head of the
+  context most, and the conflict rule is only as good as its attention to the L1 block — on "how does
+  sov work" that is what moved the answer from TCU/I-Hub to the Equinox Sovereignty Hub. The prompt
+  forbids writing the L-labels in the answer (the model did). **A new
   source needs a row there**, or it silently lands at L4: `node desktop/tools/verify-source-tiers.mjs`
   fails on any host without one, and measures the nudge on real questions (median top-1↔top-12 gap
   0.087; 0.9 chunks of 12 replaced per question — it reorders the tail, never the head).
+- **Query rules** (`expandQuery`, `intelQuery`, both exported and checked by
+  `node desktop/tools/verify-query-rules.mjs`): the killboard-stats trigger needs a word end on
+  `stat` — without it "STATus di sicurezza" went to eve-kill as a pilot name and the answer cited the
+  killboard; and in an ITALIAN sentence about mining "ore" is REPLACED with "minerale (ore)" (Italian
+  "ore" = hours), never after a count ("quante ore", "3 ore"). Measured: appending "(mining ore)"
+  pushed the target patch note from rank 5 to 18, substituting brought it to 2.
 - **`configurePaths({ modelsDir, dataDir })`** points sibling modules at the userData data dir
   ([`prices.mjs`](desktop/src/prices.mjs), [`links.mjs`](desktop/src/links.mjs)) — otherwise the
   packaged app looks for lookup files inside `app.asar`. **`fit.mjs` no longer needs this** (its
@@ -236,20 +247,29 @@ SDE-only swap, which would drop wiki/missions):
   no API) → re-index changed / drop removed.
 - `wormhole_update.py` — `wormhole.json` file-hash (`wormhole_state.json`) → re-index only the
   affected J-space system Documents (new ∪ previous key-set, so removed effects get cleared).
-- `ccp_update.py` — CCP patch notes + dev blogs from eveonline.com's Contentful archive
-  ([`ccp/news.py`](ingestion/capsuleers_ingestion/ccp/news.py), public CDA token that the site ships
-  to every browser, since 2019-01-01). Change signal is Contentful's `sys.publishedAt` — patch notes
-  are EDITED (one "Version 24.01" article gains a section at every hotfix) — so `--check` is two
-  listing queries and only changed bodies are fetched. `ccp_state.json` keeps the doc ids PER
-  ARTICLE, because an article becomes many Documents and their count changes as it grows. After a
-  full rebuild, `--seed-from-dump` rebuilds that state from the dump (with `published_at` as dumped).
-  **The article is cut at its h2/h3 into ~700-char Documents** (`PIECE`), title = article + DATE +
-  section path, no header line. Measured, not tuned by eye: a patch-note section is a list of
-  unrelated changes, and on the 19.11 "Ecosystem" section the query "when were ore quantities in
-  asteroid belts doubled?" scored cosine 0.38 on a 1 360-char block with header, 0.63 on 300 chars;
-  after the cut the 6 targeted test questions land in top-12 (they were at rank 1 200-22 000).
+- `ccp_update.py` — the CCP first-party sources (**L1**), four PROVIDERS in
+  [`ccp/`](ingestion/capsuleers_ingestion/ccp/): `news` (patch notes + dev blogs since 2019, from
+  eveonline.com's Contentful archive via the public CDA token the site ships to every browser),
+  `support` (support.eveonline.com, Zendesk Help Center API, ~310 articles, bodies in the listing),
+  `academy` (EVE Academy pages, same Contentful space) and `devdocs` (only `docs/guides/**` of
+  `esi/esi-docs` — formulae, security rounding, fitting formats, PI, SKINR; not the ESI/SSO docs).
+  Each provider LISTS items with a version stamp and no body (Contentful `sys.publishedAt`, Zendesk
+  `updated_at`, git blob sha), so `--check` is a handful of requests and only changed items are
+  fetched. `ccp_state.json` keeps the Document ids PER ITEM, because an item becomes many Documents
+  and their count changes as it grows (patch notes are edited at every hotfix). After a full rebuild,
+  `--seed-from-dump` rebuilds that state from the dump (each Document carries `ccp_provider`,
+  `ccp_item`, `ccp_stamp`). Offline tests: `ingestion/tests/test_ccp.py`.
+  **Every item is cut at its h2/h3 into ~700-char Documents** (`PIECE` in `ccp/common.py`), title =
+  item (+ DATE for news) + section path without repeated segments, no header line. Measured, not tuned
+  by eye: a patch-note section is a list of unrelated changes, and on the 19.11 "Ecosystem" section
+  the query "when were ore quantities in asteroid belts doubled?" scored cosine 0.38 on a 1 360-char
+  block with header, 0.63 on 300 chars. With the index + all 7 480 CCP chunks, 7 of 9 targeted test
+  questions put the right CCP chunk in top-12 (the other two at 13 and 16).
   A blockquote heading ("> ## Developer Comment:") is a line, not a section — promoted, it
-  replaced the real path on every section after it.
+  replaced the real path on every section after it. **EVE Academy URLs are discovered, not derived**:
+  the site answers 200 to any /eve-academy path (a ~37 KB not-found shell), so each page probes a few
+  candidates and accepts only a real render; 21 of 76 pages have a URL, the rest (ship primers,
+  activity cards) are cited with the Academy home.
 All four purge a doc's old chunks via `index.delete_by_doc_ids` before re-insert.
 **An SDE bump forces a FULL rebuild (~25 min, wiki + missions re-crawled), and one failed
 wiki fetch aborts all of it.** `wiki/api.py::api_get` retries 6× with 1-2-4-8-16 s backoff

@@ -146,7 +146,7 @@ jobs:
           ingestion/.venv/bin/python -m capsuleers_ingestion.run --missions --dump ingestion/data/docs_missions.jsonl
           ingestion/.venv/bin/python -m capsuleers_ingestion.run --from-dump ingestion/data/docs_missions.jsonl
 
-      - name: Ricostruzione completa — patch notes e dev blog CCP
+      - name: Ricostruzione completa — fonti CCP (patch notes, dev blog, Support, EVE Academy, guide)
         if: steps.plan.outputs.mode == 'full'
         shell: bash
         run: |
@@ -165,7 +165,7 @@ jobs:
           set -euo pipefail
           ingestion/.venv/bin/python -m capsuleers_ingestion.wiki_update
           ingestion/.venv/bin/python -m capsuleers_ingestion.wormhole_update
-          # Due query di elenco; i corpi solo degli articoli nuovi o modificati.
+          # Fonti CCP: elenchi con timbro di versione; i corpi solo di cio' che e' cambiato.
           ingestion/.venv/bin/python -m capsuleers_ingestion.ccp_update
           # Le missioni costano un giro completo su eve-survival anche solo per
           # accorgersi che non e' cambiato nulla (rilevamento per hash, non per

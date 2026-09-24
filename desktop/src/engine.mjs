@@ -93,7 +93,8 @@ const SYSTEM = `Sei un assistente esperto di EVE Online. Rispondi usando SOLO il
 - QUANTITÀ E NUMERI (tassativo): quando il contesto riporta quantità, prezzi, tempi, percentuali o livelli (es. "3× Capital Capacitor Battery", "200× Life Support Backup Unit", "skill ... 3", ISK, ore), riportali SEMPRE ed ESATTAMENTE come nel contesto, senza ometterli né arrotondarli. In una lista di materiali/requisiti METTI la quantità davanti a OGNI voce (es. "3× Capital Capacitor Battery", non "Capital Capacitor Battery"). Non aggiungere descrizioni inventate non presenti nel contesto.
 - Usa SOLO le informazioni nel contesto. Se non bastano, dillo ("Non ho questa informazione nelle fonti"); non inventare. Sii conciso e preciso.
 - GERARCHIA DELLE FONTI: ogni blocco del contesto è etichettato L1 (fonte primaria CCP: SDE, ESI, patch notes), L2 (dati ufficiali elaborati, es. EVE Ref), L3 (community strutturata, es. EVE University, EVE-Scout, eve-kill) o L4 (community generica, es. wiki Fandom). Se due blocchi si contraddicono, vale quello col livello PIÙ BASSO (L1 batte L2, L2 batte L3, L3 batte L4). Un dato numerico (valori, bonus, requisiti) va preso dal livello più basso che lo riporta.
-- DATE DELLE FONTI CCP: le patch notes e i dev blog CCP (L1) portano la data nel titolo e descrivono una modifica A QUELLA DATA, che può essere stata superata da una successiva. SDE ed ESI descrivono lo stato ATTUALE del gioco e prevalgono su di loro; fra due patch notes/dev blog in contraddizione vale il più recente. Quando citi una patch note, indica la sua data.`;
+- DATE DELLE FONTI CCP: le patch notes e i dev blog CCP (L1) portano la data nel titolo e descrivono una modifica A QUELLA DATA, che può essere stata superata da una successiva. SDE ed ESI descrivono lo stato ATTUALE del gioco e prevalgono su di loro; fra due patch notes/dev blog in contraddizione vale il più recente. Quando citi una patch note, indica la sua data.
+- Le etichette L1/L2/L3/L4 servono SOLO a te per pesare le fonti: NON scriverle nella risposta. Se serve, nomina la fonte (es. "secondo le patch notes del 2024-06-07", "il Support di CCP").`;
 
 // System prompt for FIT analysis: unlike the strict factual one, theorycrafting
 // needs the model's general EVE knowledge. The computed stats stay authoritative.
@@ -119,8 +120,21 @@ const EVE_SLANG = {
   pi: "planetary interaction", fw: "factional warfare", ng: "null-sec",
   cyno: "cynosural field", jf: "jump freighter", hs: "high-sec", ls: "low-sec",
 };
-function expandQuery(q) {
-  return q.replace(/\b([a-z]{2,4})\b/gi, (m) => EVE_SLANG[m.toLowerCase()] ? `${m} ${EVE_SLANG[m.toLowerCase()]}` : m);
+// "ore" is EVE's word for what you mine AND Italian for "hours": "raddoppiato le
+// quantità di ore nelle asteroid belt" retrieved cerebral accelerators and
+// fireworks (timers). In an ITALIAN sentence about mining it is REPLACED with
+// "minerale (ore)" — measured on the 19.11 "Ecosystem" patch note: rank 5 as
+// typed, 18 when "(mining ore)" was APPENDED (the extra English words pulled the
+// embedding elsewhere), 2 when substituted. English queries are left alone: there
+// "ore" already means ore; so is "quante ore dura" (no mining context).
+const MINING_CONTEXT = /\b(asteroid\w*|belt|min(?:ing|er\w*|eral\w*)|estra\w*|raffin\w*|refin\w*|veldspar|scordite|pyroxeres|plagioclase|omber|kernite|jaspet|hemorphite|hedbergite|gneiss|ochre|crokite|bistot|arkonor|mercoxit|spodumain|ghiacci\w*|ice)\b/i;
+export function expandQuery(q) {
+  let out = q.replace(/\b([a-z]{2,4})\b/gi, (m) => EVE_SLANG[m.toLowerCase()] ? `${m} ${EVE_SLANG[m.toLowerCase()]}` : m);
+  // A count before it ("quante ore", "2 ore", "poche ore") is time, mining or not.
+  if (MINING_CONTEXT.test(q) && detectLang(q, "en") === "it") {
+    out = out.replace(/(?<!\b(?:quant[ei]|poche|molte|alcune|diverse|paio di|mezz[ae]|un'|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|dodici|\d+)\s+)\bore\b/gi, "minerale (ore)");
+  }
+  return out;
 }
 
 let llama, embedCtx, chatModel, index;
@@ -227,7 +241,7 @@ function _cleanName(s) {
     .replace(/\b(in eve(\s+online)?|la corp(orazione)?|l['’]alleanza|il (personaggio|pilota|player)|the (character|pilot|player|corp(oration)?|alliance))\b/gi, "")
     .trim();
 }
-function intelQuery(q) {
+export function intelQuery(q) {
   // "Tell me about an entity" intents: chi è/sono X · X chi è · che (mi) sai dire · dimmi · parlami · info su…
   let m = q.match(/\bchi\s+(?:è|e|sono)\s+(.+)/i)            // IT "chi è X"
     || q.match(/^\s*(.+?)\s+chi\s+(?:è|e|sono)(?=\s|[?!.]|$)/i)  // IT "X chi è"
@@ -235,11 +249,13 @@ function intelQuery(q) {
     || q.match(/\b(?:che\s+(?:mi\s+)?sai\s+dire|cosa\s+(?:mi\s+)?sai|dimmi|parlami|raccontami|info(?:rmazioni)?|dammi info)\s+(?:su|di|della|dello|del|dei|sull[ao']?|dell[ao']?)\s+(.+)/i)  // IT "parlami di X"
     || q.match(/\b(?:tell\s+me\s+about|what\s+(?:do|can)\s+you\s+(?:know|tell\s+me)\s+about|what'?s\s+the\s+(?:deal|story)\s+(?:with|on)|info(?:rmation)?\s+(?:on|about)|look\s+up|search\s+for|find\s+(?:out\s+about)?)\s+(.+)/i);  // EN "tell me about X"
   if (m) return _cleanName(m[1]);
-  if (!/\b(killboard|killmail|intel|kills?|losses|perdite|stat(?:s|istiche)?|battagli|pvp|efficien)/i.test(q)) return "";
+  // `stat` needs a word end: without it "STATus di sicurezza" / "security STATus"
+  // read as a stats request and the rest of the sentence went to eve-kill as a name.
+  if (!/\b(killboard|killmail|intel|kills?|losses|perdite|stat(?:s|istiche|istics?)?\b|battagli|pvp|efficien)/i.test(q)) return "";
   m = q.match(/["']([^"']{2,48})["']/);
   if (m) return _cleanName(m[1]);
   // everything after the trigger, then iteratively strips leading preps/articles/entity-types
-  let s = q.replace(/^[\s\S]*?\b(?:killboard|killmail|intel|kills?|losses|perdite|stat\w*|battagli\w*|pvp|efficien\w*)\b/i, "");
+  let s = q.replace(/^[\s\S]*?\b(?:killboard|killmail|intel|kills?|losses|perdite|stat(?:s|istiche|istics?)?|battagli\w*|pvp|efficien\w*)\b/i, "");
   let prev;
   do {
     prev = s;
@@ -769,7 +785,11 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   //    authoritative block, and stale RAG neighbours (a Muninn doc pulled in by a polluted
   //    condense) would otherwise make the model graft that ship onto an unrelated killmail.
   let context = "", used = 0;
-  if (!mcp.text) for (const h of hits) {
+  // Primary sources first: a small model weighs the head of the context most, and
+  // the conflict rule ("the lower level wins") is only as good as the model's
+  // attention to the L1 block. Stable sort — retrieval order is kept within a tier.
+  const byTier = hits.map((h, i) => [tierOf(h).tier, i, h]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+  if (!mcp.text) for (const h of byTier) {
     const block = `[${tierTag(h)} · ${h.type}] ${h.title}\n${h.text}`;
     if (used + block.length > MAX_CONTEXT_CHARS) break;
     context += block + "\n\n---\n\n"; used += block.length;

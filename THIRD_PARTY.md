@@ -55,6 +55,9 @@ with attribution, under share-alike terms.**
 | EVE Wiki (`eve.fandom.com`) | General EVE encyclopedia, English | CC BY-SA (Fandom) |
 | EVE SDE (Fenris Creations) | Game static data | Fenris Creations Developer License |
 | EVE Online patch notes + dev blogs (`eveonline.com/news`, via its public Contentful delivery API) | Dated balance changes, features, fixes, design notes (since 2019) | © CCP / Fenris Creations — EVE content under the Developer License; each chunk links back to the article |
+| CCP Support (`support.eveonline.com`, Zendesk Help Center API) | Official rules and policies, client and account help | © CCP / Fenris Creations; each chunk links back to the article |
+| EVE Academy (`eveonline.com/eve-academy`, Contentful) | CCP's player guides | © CCP / Fenris Creations; linked back where the page has its own URL, else to the Academy home |
+| CCP developer documentation — guides (`github.com/esi/esi-docs`, `docs/guides`) | Game formulae and rules as documented by CCP | **MIT** (repository licence); linked back to developers.eveonline.com |
 | eve-survival.org | PVE mission guides | Terms not explicit — used as fan reference; see ingestion note |
 | Riley Entertainment (`riley-entertainment.com`) | Combat-site ship fits, COSMOS guides, hacking/relic/data loot stats | **No explicit licence (commercial)** — opt-in `--riley`, NOT in `--all`; see ingestion note |
 | Anoikis (`anoikis.info`) | Wormhole effects / statics | Fan community data |

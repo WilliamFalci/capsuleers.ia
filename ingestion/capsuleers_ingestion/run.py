@@ -50,11 +50,13 @@ def main() -> None:
     ap.add_argument("--missions-limit", type=int, default=None,
                     help="max guide missioni (per test; default tutte)")
     ap.add_argument("--ccp", action="store_true",
-                    help="solo patch notes + dev blog CCP (eveonline.com, via Contentful)")
+                    help="solo fonti CCP (L1): patch notes + dev blog, Support, EVE Academy, guide sviluppatori")
+    ap.add_argument("--ccp-only", default=None,
+                    help="limita le fonti CCP a questi provider (es. news,support,academy,devdocs)")
     ap.add_argument("--ccp-since", default=None,
-                    help="data minima degli articoli CCP (YYYY-MM-DD; default quella di ccp/news.py)")
+                    help="data minima di patch notes / dev blog (YYYY-MM-DD; default quella di ccp/news.py)")
     ap.add_argument("--ccp-limit", type=int, default=None,
-                    help="max articoli CCP (per test; default tutti)")
+                    help="max elementi PER provider CCP (per test; default tutti)")
     ap.add_argument("--riley", action="store_true",
                     help="solo guide Riley Entertainment (sito statico; NON in --all "
                          "per la licenza non esplicita)")
@@ -116,8 +118,12 @@ def main() -> None:
             from .missions.eve_survival import scrape_missions
             yield from scrape_missions(limit=args.missions_limit)
         if args.all or args.ccp:
-            from .ccp.news import DEFAULT_SINCE, scrape_ccp
-            yield from scrape_ccp(since=args.ccp_since or DEFAULT_SINCE, limit=args.ccp_limit)
+            from .ccp import providers
+            for prov in providers(args.ccp_only, since=args.ccp_since):
+                items = prov.list()
+                print(f"[ccp:{prov.name}] {len(items)} elementi — {prov.description}")
+                for _, docs in prov.fetch(items[: args.ccp_limit] if args.ccp_limit else items):
+                    yield from docs
         if args.riley:  # opt-in only (not in --all): no explicit licence
             from .web.riley import scrape_riley
             print("[riley] crawl riley-entertainment.com/gaming/eve-online")

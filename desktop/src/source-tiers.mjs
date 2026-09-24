@@ -33,6 +33,9 @@ const BY_SOURCE = {
   ccp_sde: [1, "CCP SDE"],
   ccp_patch_notes: [1, "CCP patch notes"],
   ccp_dev_blog: [1, "CCP dev blog"],
+  ccp_support: [1, "CCP Support"],
+  ccp_academy: [1, "EVE Academy"],
+  ccp_devdocs: [1, "CCP developer docs"],
   eve_university_wiki: [3, "EVE University"],
   eve_fandom_wiki: [4, "EVE Wiki (Fandom)"],
   sisters_probe_wiki: [4, "Sisters Probe Wiki (Fandom)"],
@@ -77,6 +80,9 @@ export function tierOf({ source, url } = {}) {
   // Older index releases carry no `source`: a news article is recognised by path.
   if ((h === "eveonline.com" || h.endsWith(".eveonline.com")) && /\/news\/view\//.test(url)) {
     return { tier: 1, label: "CCP news", dated: true };
+  }
+  if ((h === "eveonline.com" || h.endsWith(".eveonline.com")) && /\/eve-academy(\/|$)/.test(url)) {
+    return { tier: 1, label: "EVE Academy" };
   }
   for (const [suffix, tier, label] of BY_HOST) {
     if (h === suffix || h.endsWith("." + suffix)) return { tier, label };
