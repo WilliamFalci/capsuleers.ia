@@ -63,6 +63,19 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   (`looksLikeFit`) → fit analysis (see below) is injected as context; (2) embed → retrieve
   top-K → build prompt (EVE expert, answers only from context, cites sources, replies in the
   user's language) → stream tokens, then sources.
+- **Source hierarchy** — [`source-tiers.mjs`](desktop/src/source-tiers.mjs) is the single table
+  of how much each source is trusted: **L1** CCP (SDE, ESI, docs, Support, patch notes, dev posts),
+  **L2** processed official data (EVE Ref), **L3** structured community (EVE University, EVE-Scout,
+  Anoikis, eve-kill, Dotlan, Fuzzwork, zKillboard…), **L4** general community (Fandom wikis,
+  eve-survival, Riley, EVE Workbench). It drives three things: a small retrieval nudge
+  (`TIER_BONUS`, ±0.015 added to the cosine score, precomputed per chunk at index load); the tag on
+  every context block (`[L1 · CCP SDE · item]`, live blocks too) plus a SYSTEM rule "on conflict the
+  lower level wins"; and the `tier` on every cited source (sorted primary-first, chip in the UI).
+  The tier is derived from `source` when the index carries it, else from the URL host — so it works on
+  index releases published before `source` was exported (only SDE chunks have `url: null`). **A new
+  source needs a row there**, or it silently lands at L4: `node desktop/tools/verify-source-tiers.mjs`
+  fails on any host without one, and measures the nudge on real questions (median top-1↔top-12 gap
+  0.087; 0.9 chunks of 12 replaced per question — it reorders the tail, never the head).
 - **`configurePaths({ modelsDir, dataDir })`** points sibling modules at the userData data dir
   ([`prices.mjs`](desktop/src/prices.mjs), [`links.mjs`](desktop/src/links.mjs)) — otherwise the
   packaged app looks for lookup files inside `app.asar`. **`fit.mjs` no longer needs this** (its

@@ -4,6 +4,22 @@ Architectural principle: **static data** (knowledge that rarely changes) →
 indexed in the RAG; **live data** (prices, orders, killmails, activity) → fetched
 **on-demand** by API tools (they don't go into the index because they change constantly).
 
+## Source hierarchy
+
+When two sources disagree, the lower level wins. Implemented in
+[`desktop/src/source-tiers.mjs`](../desktop/src/source-tiers.mjs) (retrieval nudge, context tags,
+prompt rule, cited-source chips).
+
+| Level | Meaning | In use |
+|---|---|---|
+| **L1** — primary | CCP itself: documentation, Support, SDE, ESI, patch notes, developer posts | SDE (indexed), ESI (live). *Not yet ingested: docs, Support, patch notes, dev posts.* |
+| **L2** — processed official data | tools that declare CCP/SDE/ESI provenance | EVE Ref (prices) |
+| **L3** — structured community | EVE University, EVE Scout, Dotlan, Anoik.is, Ellatha, Fuzzwork, EVE-Kill, zKillboard, other specialised databases/tools | EVE University, Anoikis, EVE-Scout, eve-kill |
+| **L4** — general community | prose wikis and guides without a structured data model | EVE Wiki + Sisters Probe Wiki (Fandom), eve-survival, Riley (opt-in), EVE Workbench fits |
+
+Anoikis statics/effects are merged into the SDE `system` documents of J-space, so they ride at L1
+there: the tier is per document, not per line.
+
 ## In use
 
 | Source | What it provides | Type | Status |

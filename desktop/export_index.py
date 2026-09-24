@@ -20,7 +20,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 def scroll(offset):
     body = {"limit": 2000, "with_vector": True,
-            "with_payload": ["text", "title", "type", "url"]}
+            "with_payload": ["text", "title", "type", "url", "source"]}
     if offset is not None:
         body["offset"] = offset
     req = urllib.request.Request(URL, data=json.dumps(body).encode(),
@@ -45,7 +45,8 @@ with open(os.path.join(OUT_DIR, "index.vec"), "wb") as vec, \
             pl = p.get("payload", {})
             meta.write(json.dumps({"id": str(p["id"]), "text": pl.get("text", ""),
                                    "title": pl.get("title"), "type": pl.get("type"),
-                                   "url": pl.get("url")}, ensure_ascii=False) + "\n")
+                                   "url": pl.get("url"), "source": pl.get("source")},
+                                  ensure_ascii=False) + "\n")
             n += 1
         off = res.get("next_page_offset")
         if off is None:

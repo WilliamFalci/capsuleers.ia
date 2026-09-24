@@ -361,6 +361,9 @@
     .sources b { color: var(--orange-dim); letter-spacing: .1em; }
     .sources a { color: var(--orange); text-decoration: none; }
     .sources a:hover { text-decoration: underline; }
+    /* Source-hierarchy chip (L1 CCP … L4 general community): trust at a glance. */
+    .sources .tier { font-size: .75em; padding: 0 .35em; border: 1px solid currentColor; border-radius: 3px; opacity: .8; }
+    .sources .tier-1 { color: var(--orange); opacity: 1; }
 
     /* Local Intel panel */
     /* Local Intel: full content-area PAGE (not a centered modal), same slot as #chat —
@@ -2302,6 +2305,7 @@
         fliesWith: "Vola spesso con", recentShips: "Ultime navi usate",
         openKillmail: "Apri il killmail su eve-kill.com",
         sources: "FONTI //",
+        tier1: "L1 · fonte primaria CCP", tier2: "L2 · dati ufficiali elaborati", tier3: "L3 · community strutturata", tier4: "L4 · community generica",
         fitCopy: "Copia", fitCopied: "Copiato!",
         cards: { kill: "Kill", duration: "Durata", isk: "ISK distrutti", iskMin: "ISK/min", alliances: "Alleanze", corps: "Corp", multiParty: "Multi-party",
           kills: "Kill", losses: "Perdite", kd: "K/D", iskRatio: "ISK ratio", iskEff: "ISK eff.", soloRate: "Solo %", finalBlows: "Final blow", gang: "Gang medio",
@@ -2421,6 +2425,7 @@
         fliesWith: "Often flies with", recentShips: "Recently used ships",
         openKillmail: "Open the killmail on eve-kill.com",
         sources: "SOURCES //",
+        tier1: "L1 · primary CCP source", tier2: "L2 · processed official data", tier3: "L3 · structured community", tier4: "L4 · general community",
         fitCopy: "Copy", fitCopied: "Copied!",
         cards: { kill: "Kills", duration: "Duration", isk: "ISK destroyed", iskMin: "ISK/min", alliances: "Alliances", corps: "Corps", multiParty: "Multi-party",
           kills: "Kills", losses: "Losses", kd: "K/D", iskRatio: "ISK ratio", iskEff: "ISK eff.", soloRate: "Solo %", finalBlows: "Final blows", gang: "Avg gang",
@@ -2678,7 +2683,8 @@
         const s = document.createElement("div");
         s.className = "sources";
         s.innerHTML = `<b>${L.sources}</b> ` + res.sources.map(x =>
-          x.url ? `<a href="${x.url}">${x.title}</a>` : `${x.title} <span style="opacity:.6">(${x.type})</span>`).join(" · ");
+          (x.tier ? `<span class="tier tier-${x.tier}" title="${L["tier" + x.tier] || ""}">L${x.tier}</span> ` : "")
+          + (x.url ? `<a href="${x.url}">${x.title}</a>` : `${x.title} <span style="opacity:.6">(${x.type})</span>`)).join(" · ");
         current.appendChild(s);
       }
       if (!res.error && res.kills?.length) current.appendChild(renderKills(res.kills));

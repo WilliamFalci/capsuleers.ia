@@ -42,7 +42,7 @@ async function flush(batch) {
     if (f32.length !== DIM) throw new Error(`dim ${f32.length} != ${DIM}`);
     vecOut.write(Buffer.from(f32.buffer));
     const o = batch[i], m = o.metadata ?? {};
-    metaOut.write(JSON.stringify({ id: o.id, text: o.text, title: m.title, type: m.type, url: m.url ?? null }) + "\n");
+    metaOut.write(JSON.stringify({ id: o.id, text: o.text, title: m.title, type: m.type, url: m.url ?? null, source: m.source ?? null }) + "\n");
   }
   n += batch.length;
   const rate = n / ((Date.now() - t0) / 1000);

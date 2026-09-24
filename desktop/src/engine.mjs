@@ -12,6 +12,7 @@ import { scoutConnections } from "./eve-scout.mjs";
 import { maybeMcp, resetDoctrineMemory } from "./mcp-intel.mjs";
 import { maybeWorkbench, fitIntent, shipFromQuery, runFitSearch, resetFitMemory } from "./eveworkbench.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
+import { tierOf, tierTag, TIER_BONUS } from "./source-tiers.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -90,7 +91,8 @@ const SYSTEM = `Sei un assistente esperto di EVE Online. Rispondi usando SOLO il
 - TERMINOLOGIA (tassativo): NON tradurre MAI i nomi di navi, oggetti, moduli, skill, luoghi e i termini di gioco di EVE: vanno lasciati ESATTAMENTE in inglese, come nel gioco e nel contesto. Esempi corretti: "Sovereignty Hub" (NON "Hub di Sovranità"), "Entosis Link", "relic site" e "data site" (NON "siti di reliquie/dati"), "Damage Control II", "high slot", "Sovereignty". Traduci solo il testo discorsivo attorno a questi nomi.
 - Scrivi in italiano CORRETTO e grammaticale: niente errori di ortografia né parole inventate (es. "alleanza" non "alianza", "schierare/deployare" non "deplofare"). Se non sei certo di una parola italiana, usane una più semplice e corretta.
 - QUANTITÀ E NUMERI (tassativo): quando il contesto riporta quantità, prezzi, tempi, percentuali o livelli (es. "3× Capital Capacitor Battery", "200× Life Support Backup Unit", "skill ... 3", ISK, ore), riportali SEMPRE ed ESATTAMENTE come nel contesto, senza ometterli né arrotondarli. In una lista di materiali/requisiti METTI la quantità davanti a OGNI voce (es. "3× Capital Capacitor Battery", non "Capital Capacitor Battery"). Non aggiungere descrizioni inventate non presenti nel contesto.
-- Usa SOLO le informazioni nel contesto. Se non bastano, dillo ("Non ho questa informazione nelle fonti"); non inventare. Sii conciso e preciso.`;
+- Usa SOLO le informazioni nel contesto. Se non bastano, dillo ("Non ho questa informazione nelle fonti"); non inventare. Sii conciso e preciso.
+- GERARCHIA DELLE FONTI: ogni blocco del contesto è etichettato L1 (fonte primaria CCP: SDE, ESI, patch notes), L2 (dati ufficiali elaborati, es. EVE Ref), L3 (community strutturata, es. EVE University, EVE-Scout, eve-kill) o L4 (community generica, es. wiki Fandom). Se due blocchi si contraddicono, vale quello col livello PIÙ BASSO (L1 batte L2, L2 batte L3, L3 batte L4). Un dato numerico (valori, bonus, requisiti) va preso dal livello più basso che lo riporta.`;
 
 // System prompt for FIT analysis: unlike the strict factual one, theorycrafting
 // needs the model's general EVE knowledge. The computed stats stay authoritative.
@@ -448,7 +450,11 @@ function loadIndex() {
     const inv = 1 / (Math.sqrt(s) || 1);
     for (let j = 0; j < DIM; j++) vectors[off + j] *= inv;
   }
-  return { vectors, count, meta };
+  // Source-hierarchy nudge, precomputed once: resolving the tier (URL parse) for
+  // ~77k chunks on every query would cost more than the dot products.
+  const bonus = new Float32Array(count);
+  for (let i = 0; i < count; i++) bonus[i] = TIER_BONUS[tierOf(meta[i]).tier] ?? 0;
+  return { vectors, count, meta, bonus };
 }
 
 function topK(query) {
@@ -459,7 +465,7 @@ function topK(query) {
   for (let i = 0; i < index.count; i++) {
     let dot = 0; const off = i * DIM;
     for (let j = 0; j < DIM; j++) dot += index.vectors[off + j] * q[j];
-    scores.push([dot, i]);
+    scores.push([dot + index.bonus[i], i]);
   }
   scores.sort((a, b) => b[0] - a[0]);
   return scores.slice(0, TOP_K).map(([, i]) => index.meta[i]);
@@ -763,7 +769,7 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   //    condense) would otherwise make the model graft that ship onto an unrelated killmail.
   let context = "", used = 0;
   if (!mcp.text) for (const h of hits) {
-    const block = `[${h.type}] ${h.title}\n${h.text}`;
+    const block = `[${tierTag(h)} · ${h.type}] ${h.title}\n${h.text}`;
     if (used + block.length > MAX_CONTEXT_CHARS) break;
     context += block + "\n\n---\n\n"; used += block.length;
   }
@@ -787,13 +793,21 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // authoritative: the SYSTEM prompt says to answer using only the CONTEXT, so if
   // these blocks sit outside it the model ignores them and says "no info" even when
   // the data is right there. A final directive (highest salience) reinforces it.
-  const liveIntel = [mcp.text, intel.text, esi.text, scout.text, totalCost, priceInfo].filter(Boolean).join("\n\n");
+  // Each live block carries its tier, as the RAG blocks do: ESI is CCP itself (L1),
+  // EVE Ref prices are processed official data (L2), killboard and EVE-Scout are
+  // structured community sources (L3). Calling them all "authoritative" put a
+  // killboard aggregate on the same footing as ESI.
+  const liveIntel = [
+    [esi.text, "L1 · ESI"],
+    [totalCost, "L2 · EVE Ref"], [priceInfo, "L2 · EVE Ref"],
+    [mcp.text, "L3 · eve-kill"], [intel.text, "L3 · eve-kill"], [scout.text, "L3 · EVE-Scout"],
+  ].filter(([t]) => t).map(([t, tag]) => `[${tag}]\n${t}`).join("\n\n");
   // End-of-prompt directives (highest salience), one per active source. Gating +
   // IT/EN text live together, so adding a source is one row here.
   const directives = [
     { on: !!liveIntel,
-      it: "\nIMPORTANTE: il CONTESTO include DATI LIVE autorevoli (EVE-Scout/ESI/killboard/prezzi): rispondi usandoli, NON dire che l'informazione manca.",
-      en: "\nIMPORTANT: the CONTEXT includes authoritative LIVE DATA (EVE-Scout/ESI/killboard/prices): answer using it, do NOT say the information is missing." },
+      it: "\nIMPORTANTE: il CONTESTO include DATI LIVE (ESI = L1, prezzi EVE Ref = L2, killboard/EVE-Scout = L3): rispondi usandoli, NON dire che l'informazione manca; se contraddicono un altro blocco, vale il livello più basso.",
+      en: "\nIMPORTANT: the CONTEXT includes LIVE DATA (ESI = L1, EVE Ref prices = L2, killboard/EVE-Scout = L3): answer using it, do NOT say the information is missing; if it contradicts another block, the lower level wins." },
     { on: !!(mcp.cards || mcp.kills || intel.card),
       it: "\nI risultati dettagliati sono mostrati come SCHEDA/LISTA sotto la tua risposta: scrivi SOLO una breve frase introduttiva (1 riga), NON elencare i singoli risultati e NON ripetere i numeri.",
       en: "\nThe detailed results are shown as a CARD/LIST below your answer: write ONLY a short one-line intro, do NOT enumerate the individual results and do NOT repeat the numbers." },
@@ -887,8 +901,12 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   } else {
     const seen = new Set();
     const rag = hits.filter((h) => { const k = h.url || h.title; if (seen.has(k)) return false; seen.add(k); return true; })
-      .slice(0, 5).map((h) => ({ title: h.title, type: h.type, url: h.url }));
+      .slice(0, 5).map((h) => ({ title: h.title, type: h.type, url: h.url, tier: tierOf(h).tier }));
     sources = [...apiSources, ...rag];
   }
+  // Every cited source carries its tier, and the list reads primary-first: the
+  // order a reader should trust them in. Stable sort keeps retrieval order within
+  // a tier.
+  sources = sources.map((x) => ({ ...x, tier: x.tier ?? tierOf(x).tier })).sort((a, b) => a.tier - b.tier);
   return { answer: linked, sources, kills: (mcp.kills?.length ? mcp.kills : intel.kills), cards: mcp.cards || intel.card || fitSuggest || null };
 }
