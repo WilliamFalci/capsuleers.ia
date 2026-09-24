@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { tierOf, TIER_BONUS } from "../src/source-tiers.mjs";
+import { tierOf, TIER_BONUS, bonusOf } from "../src/source-tiers.mjs";
 
 const APP = path.join(os.homedir(), ".config", "capsuleers-ia-desktop");
 const DATA = process.env.IA_DATA || path.join(APP, "data");
@@ -27,6 +27,8 @@ const cases = [
   [{ url: "https://esi.evetech.net/" }, 1],
   [{ url: "https://developers.eveonline.com/docs/guides/skinr/" }, 1],
   [{ url: "https://www.eveonline.com/news/view/patch-notes" }, 1],
+  [{ source: "ccp_patch_notes", url: "https://www.eveonline.com/news/view/patch-notes-version-24-01" }, 1],
+  [{ source: "ccp_dev_blog", url: "https://www.eveonline.com/news/view/x" }, 1],
   [{ url: "https://everef.net/" }, 2],
   [{ url: "https://wiki.eveuniversity.org/Warp_Scrambler" }, 3],
   [{ url: "https://www.eve-scout.com/" }, 3], [{ url: "https://eve-kill.com/character/1" }, 3],
@@ -44,6 +46,9 @@ for (const [hit, want] of cases) {
   const got = tierOf(hit).tier;
   ok(got === want, `tierOf(${hit.source ?? ""}${hit.url ?? "url=null"}) = L${got} (atteso L${want})`);
 }
+ok(bonusOf({ source: "ccp_patch_notes", url: "https://www.eveonline.com/news/view/x" }) === 0
+  && bonusOf({ url: "https://www.eveonline.com/news/view/x" }) === 0
+  && bonusOf({ url: null }) === TIER_BONUS[1], "le fonti CCP datate restano L1 ma senza bonus di retrieval");
 ok(TIER_BONUS[1] > TIER_BONUS[2] && TIER_BONUS[2] > TIER_BONUS[3] && TIER_BONUS[3] > TIER_BONUS[4],
   "il bonus decresce strettamente con il livello");
 
@@ -86,7 +91,7 @@ for (let i = 0; i < n; i++) {
   const inv = 1 / (Math.sqrt(s) || 1);
   for (let j = 0; j < DIM; j++) vec[o + j] *= inv;
 }
-const bonus = Float32Array.from(meta.slice(0, n), (m) => TIER_BONUS[tierOf(m).tier]);
+const bonus = Float32Array.from(meta.slice(0, n), (m) => bonusOf(m));
 
 const QUESTIONS = [
   "What does a Warp Scrambler do?", "Come funziona l'entosis link?",

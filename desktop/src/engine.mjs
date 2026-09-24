@@ -12,7 +12,7 @@ import { scoutConnections } from "./eve-scout.mjs";
 import { maybeMcp, resetDoctrineMemory } from "./mcp-intel.mjs";
 import { maybeWorkbench, fitIntent, shipFromQuery, runFitSearch, resetFitMemory } from "./eveworkbench.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
-import { tierOf, tierTag, TIER_BONUS } from "./source-tiers.mjs";
+import { tierOf, tierTag, bonusOf } from "./source-tiers.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -92,7 +92,8 @@ const SYSTEM = `Sei un assistente esperto di EVE Online. Rispondi usando SOLO il
 - Scrivi in italiano CORRETTO e grammaticale: niente errori di ortografia né parole inventate (es. "alleanza" non "alianza", "schierare/deployare" non "deplofare"). Se non sei certo di una parola italiana, usane una più semplice e corretta.
 - QUANTITÀ E NUMERI (tassativo): quando il contesto riporta quantità, prezzi, tempi, percentuali o livelli (es. "3× Capital Capacitor Battery", "200× Life Support Backup Unit", "skill ... 3", ISK, ore), riportali SEMPRE ed ESATTAMENTE come nel contesto, senza ometterli né arrotondarli. In una lista di materiali/requisiti METTI la quantità davanti a OGNI voce (es. "3× Capital Capacitor Battery", non "Capital Capacitor Battery"). Non aggiungere descrizioni inventate non presenti nel contesto.
 - Usa SOLO le informazioni nel contesto. Se non bastano, dillo ("Non ho questa informazione nelle fonti"); non inventare. Sii conciso e preciso.
-- GERARCHIA DELLE FONTI: ogni blocco del contesto è etichettato L1 (fonte primaria CCP: SDE, ESI, patch notes), L2 (dati ufficiali elaborati, es. EVE Ref), L3 (community strutturata, es. EVE University, EVE-Scout, eve-kill) o L4 (community generica, es. wiki Fandom). Se due blocchi si contraddicono, vale quello col livello PIÙ BASSO (L1 batte L2, L2 batte L3, L3 batte L4). Un dato numerico (valori, bonus, requisiti) va preso dal livello più basso che lo riporta.`;
+- GERARCHIA DELLE FONTI: ogni blocco del contesto è etichettato L1 (fonte primaria CCP: SDE, ESI, patch notes), L2 (dati ufficiali elaborati, es. EVE Ref), L3 (community strutturata, es. EVE University, EVE-Scout, eve-kill) o L4 (community generica, es. wiki Fandom). Se due blocchi si contraddicono, vale quello col livello PIÙ BASSO (L1 batte L2, L2 batte L3, L3 batte L4). Un dato numerico (valori, bonus, requisiti) va preso dal livello più basso che lo riporta.
+- DATE DELLE FONTI CCP: le patch notes e i dev blog CCP (L1) portano la data nel titolo e descrivono una modifica A QUELLA DATA, che può essere stata superata da una successiva. SDE ed ESI descrivono lo stato ATTUALE del gioco e prevalgono su di loro; fra due patch notes/dev blog in contraddizione vale il più recente. Quando citi una patch note, indica la sua data.`;
 
 // System prompt for FIT analysis: unlike the strict factual one, theorycrafting
 // needs the model's general EVE knowledge. The computed stats stay authoritative.
@@ -453,7 +454,7 @@ function loadIndex() {
   // Source-hierarchy nudge, precomputed once: resolving the tier (URL parse) for
   // ~77k chunks on every query would cost more than the dot products.
   const bonus = new Float32Array(count);
-  for (let i = 0; i < count; i++) bonus[i] = TIER_BONUS[tierOf(meta[i]).tier] ?? 0;
+  for (let i = 0; i < count; i++) bonus[i] = bonusOf(meta[i]);
   return { vectors, count, meta, bonus };
 }
 

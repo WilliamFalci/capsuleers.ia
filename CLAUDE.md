@@ -72,7 +72,10 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   every context block (`[L1 · CCP SDE · item]`, live blocks too) plus a SYSTEM rule "on conflict the
   lower level wins"; and the `tier` on every cited source (sorted primary-first, chip in the UI).
   The tier is derived from `source` when the index carries it, else from the URL host — so it works on
-  index releases published before `source` was exported (only SDE chunks have `url: null`). **A new
+  index releases published before `source` was exported (only SDE chunks have `url: null`).
+  **Dated L1 sources (CCP patch notes, dev blogs) get NO retrieval nudge** (`bonusOf`): they stay L1
+  for the tag and the conflict rule, but describe a change as of their date and may be superseded —
+  and the SYSTEM prompt says SDE/ESI beat them, and among them the newest wins. **A new
   source needs a row there**, or it silently lands at L4: `node desktop/tools/verify-source-tiers.mjs`
   fails on any host without one, and measures the nudge on real questions (median top-1↔top-12 gap
   0.087; 0.9 chunks of 12 replaced per question — it reorders the tail, never the head).
@@ -225,7 +228,7 @@ Imports from `eve-fit-engine/node`: `loadBundledDataset`, `buildAllVSkillProfile
 ## Ingestion (Python data factory)
 
 [`ingestion/capsuleers_ingestion/`](ingestion/capsuleers_ingestion/): `run.py` (CLI), `update.py`
-(daily SDE build-number check + zero-downtime Qdrant alias swap), plus three **incremental**
+(daily SDE build-number check + zero-downtime Qdrant alias swap), plus four **incremental**
 auto-updaters that re-index changed docs **in place** on the live collection (NOT via update.py's
 SDE-only swap, which would drop wiki/missions):
 - `wiki_update.py` — `recentchanges` API watermark (per-source: `wiki_state.json` for EVE Uni, `wiki_state_<key>.json` for the others) → re-index changed pages across every wiki in [`wiki/sources.py`](ingestion/capsuleers_ingestion/wiki/sources.py) (EVE University + EVE Sister Core Scanner Probe Fandom wiki).
@@ -233,7 +236,21 @@ SDE-only swap, which would drop wiki/missions):
   no API) → re-index changed / drop removed.
 - `wormhole_update.py` — `wormhole.json` file-hash (`wormhole_state.json`) → re-index only the
   affected J-space system Documents (new ∪ previous key-set, so removed effects get cleared).
-All three purge a doc's old chunks via `index.delete_by_doc_ids` before re-insert.
+- `ccp_update.py` — CCP patch notes + dev blogs from eveonline.com's Contentful archive
+  ([`ccp/news.py`](ingestion/capsuleers_ingestion/ccp/news.py), public CDA token that the site ships
+  to every browser, since 2019-01-01). Change signal is Contentful's `sys.publishedAt` — patch notes
+  are EDITED (one "Version 24.01" article gains a section at every hotfix) — so `--check` is two
+  listing queries and only changed bodies are fetched. `ccp_state.json` keeps the doc ids PER
+  ARTICLE, because an article becomes many Documents and their count changes as it grows. After a
+  full rebuild, `--seed-from-dump` rebuilds that state from the dump (with `published_at` as dumped).
+  **The article is cut at its h2/h3 into ~700-char Documents** (`PIECE`), title = article + DATE +
+  section path, no header line. Measured, not tuned by eye: a patch-note section is a list of
+  unrelated changes, and on the 19.11 "Ecosystem" section the query "when were ore quantities in
+  asteroid belts doubled?" scored cosine 0.38 on a 1 360-char block with header, 0.63 on 300 chars;
+  after the cut the 6 targeted test questions land in top-12 (they were at rank 1 200-22 000).
+  A blockquote heading ("> ## Developer Comment:") is a line, not a section — promoted, it
+  replaced the real path on every section after it.
+All four purge a doc's old chunks via `index.delete_by_doc_ids` before re-insert.
 **An SDE bump forces a FULL rebuild (~25 min, wiki + missions re-crawled), and one failed
 wiki fetch aborts all of it.** `wiki/api.py::api_get` retries 6× with 1-2-4-8-16 s backoff
 (~1.5 min window). It was 3× over ~3 s until 2026-09-23, when a single EVE Uni blip

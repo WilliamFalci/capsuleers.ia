@@ -3,6 +3,7 @@
 Phase 1 — fetch/parse (Python only, no infra):
     python -m capsuleers_ingestion.run --sde  --dump data/docs_sde.jsonl --sde-path data/sde.sqlite
     python -m capsuleers_ingestion.run --wiki --dump data/docs_wiki.jsonl
+    python -m capsuleers_ingestion.run --ccp  --dump data/docs_ccp.jsonl
 
 Phase 2 — embed + index (requires Ollama + Qdrant):
     python -m capsuleers_ingestion.run --from-dump data/docs_sde.jsonl
@@ -36,7 +37,7 @@ def _sde_docs(sde_dir: str | None) -> Iterator[Document]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Ingestione dati EVE")
-    ap.add_argument("--all", action="store_true", help="SDE + Wiki")
+    ap.add_argument("--all", action="store_true", help="SDE + Wiki + missioni + CCP")
     ap.add_argument("--sde", action="store_true", help="solo SDE")
     ap.add_argument("--wiki", action="store_true",
                     help="solo wiki MediaWiki (tutte le fonti registrate)")
@@ -48,6 +49,12 @@ def main() -> None:
     ap.add_argument("--missions", action="store_true", help="solo guide missioni (eve-survival.org)")
     ap.add_argument("--missions-limit", type=int, default=None,
                     help="max guide missioni (per test; default tutte)")
+    ap.add_argument("--ccp", action="store_true",
+                    help="solo patch notes + dev blog CCP (eveonline.com, via Contentful)")
+    ap.add_argument("--ccp-since", default=None,
+                    help="data minima degli articoli CCP (YYYY-MM-DD; default quella di ccp/news.py)")
+    ap.add_argument("--ccp-limit", type=int, default=None,
+                    help="max articoli CCP (per test; default tutti)")
     ap.add_argument("--riley", action="store_true",
                     help="solo guide Riley Entertainment (sito statico; NON in --all "
                          "per la licenza non esplicita)")
@@ -91,8 +98,8 @@ def main() -> None:
         print(f"Indicizzati {total} chunk da {args.from_dump}.")
         return
 
-    if not (args.all or args.sde or args.wiki or args.missions or args.riley):
-        ap.error("specifica una fonte (--all|--sde|--wiki|--missions|--riley) oppure --from-dump")
+    if not (args.all or args.sde or args.wiki or args.missions or args.ccp or args.riley):
+        ap.error("specifica una fonte (--all|--sde|--wiki|--missions|--ccp|--riley) oppure --from-dump")
 
     wiki_sources = (
         [wiki_source(args.wiki_source)] if args.wiki_source else list(WIKI_SOURCES)
@@ -108,6 +115,9 @@ def main() -> None:
         if args.all or args.missions:
             from .missions.eve_survival import scrape_missions
             yield from scrape_missions(limit=args.missions_limit)
+        if args.all or args.ccp:
+            from .ccp.news import DEFAULT_SINCE, scrape_ccp
+            yield from scrape_ccp(since=args.ccp_since or DEFAULT_SINCE, limit=args.ccp_limit)
         if args.riley:  # opt-in only (not in --all): no explicit licence
             from .web.riley import scrape_riley
             print("[riley] crawl riley-entertainment.com/gaming/eve-online")

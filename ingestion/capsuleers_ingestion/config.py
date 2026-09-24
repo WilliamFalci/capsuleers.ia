@@ -39,6 +39,15 @@ class Config:
     wormhole_url: str = "https://anoikis.info/share/wormhole.json"
     wormhole_file: str = str(DATA_DIR / "wormhole.json")
 
+    # CCP news archive (patch notes, dev blogs) — eveonline.com is Contentful-backed and
+    # its public Content Delivery API is what the site itself reads. The token is the
+    # read-only CDA token eveonline.com ships to every browser (same one NodeQueue's
+    # news backfill uses); override if CCP rotates it.
+    ccp_contentful_space: str = os.getenv("EVE_CONTENTFUL_SPACE", "7lhcm73ukv5p")
+    ccp_contentful_env: str = os.getenv("EVE_CONTENTFUL_ENV", "master")
+    ccp_contentful_token: str = os.getenv(
+        "EVE_CONTENTFUL_TOKEN", "BSl3tP6oZ_X_T7kAwXhGF_UB30oG4Hvt03lxol2ENB4")
+
 
 CONFIG = Config()
 

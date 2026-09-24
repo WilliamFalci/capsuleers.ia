@@ -54,6 +54,7 @@ with attribution, under share-alike terms.**
 | EVE Sister Core Scanner Probe Wiki (`sistersprobe.fandom.com/de`) | Exploration sites (anomalies / signatures / relic & data sites), German | CC BY-SA (Fandom) |
 | EVE Wiki (`eve.fandom.com`) | General EVE encyclopedia, English | CC BY-SA (Fandom) |
 | EVE SDE (Fenris Creations) | Game static data | Fenris Creations Developer License |
+| EVE Online patch notes + dev blogs (`eveonline.com/news`, via its public Contentful delivery API) | Dated balance changes, features, fixes, design notes (since 2019) | © CCP / Fenris Creations — EVE content under the Developer License; each chunk links back to the article |
 | eve-survival.org | PVE mission guides | Terms not explicit — used as fan reference; see ingestion note |
 | Riley Entertainment (`riley-entertainment.com`) | Combat-site ship fits, COSMOS guides, hacking/relic/data loot stats | **No explicit licence (commercial)** — opt-in `--riley`, NOT in `--all`; see ingestion note |
 | Anoikis (`anoikis.info`) | Wormhole effects / statics | Fan community data |

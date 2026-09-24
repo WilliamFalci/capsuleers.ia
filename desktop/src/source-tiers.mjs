@@ -31,6 +31,8 @@ export const TIERS = {
 // ingestion actually emits; a new source adds its row here.
 const BY_SOURCE = {
   ccp_sde: [1, "CCP SDE"],
+  ccp_patch_notes: [1, "CCP patch notes"],
+  ccp_dev_blog: [1, "CCP dev blog"],
   eve_university_wiki: [3, "EVE University"],
   eve_fandom_wiki: [4, "EVE Wiki (Fandom)"],
   sisters_probe_wiki: [4, "Sisters Probe Wiki (Fandom)"],
@@ -44,7 +46,7 @@ const BY_HOST = [
   ["developers.eveonline.com", 1, "CCP developers"],
   ["support.eveonline.com", 1, "CCP Support"],
   ["esi.evetech.net", 1, "ESI"],
-  ["eveonline.com", 1, "CCP"],
+  ["eveonline.com", 1, "CCP eveonline.com"],
   ["everef.net", 2, "EVE Ref"],
   ["wiki.eveuniversity.org", 3, "EVE University"],
   ["eve-scout.com", 3, "EVE-Scout"],
@@ -72,6 +74,10 @@ export function tierOf({ source, url } = {}) {
   if (s) return { tier: s[0], label: s[1] };
   if (!url) return { tier: 1, label: "CCP SDE" };   // only SDE chunks lack a URL
   const h = host(url);
+  // Older index releases carry no `source`: a news article is recognised by path.
+  if ((h === "eveonline.com" || h.endsWith(".eveonline.com")) && /\/news\/view\//.test(url)) {
+    return { tier: 1, label: "CCP news", dated: true };
+  }
   for (const [suffix, tier, label] of BY_HOST) {
     if (h === suffix || h.endsWith("." + suffix)) return { tier, label };
   }
@@ -86,6 +92,22 @@ export function tierOf({ source, url } = {}) {
 // and 12th hit has median 0.087, so the 0.03 L1-L4 span reorders the tail of
 // top-12 (0.9 chunks replaced per question on average) and never the head.
 export const TIER_BONUS = { 1: 0.015, 2: 0.008, 3: 0, 4: -0.015 };
+
+// DATED sources — CCP patch notes and dev blogs — stay L1 in the tag and in the
+// conflict rule, but get NO retrieval nudge. The nudge exists to favour what
+// describes the game as it is NOW; a patch note describes a change as of its date
+// and may have been superseded, and a dev blog can be a narrative (a battle
+// report, a security-policy post). Measured on the index + 4 991 CCP chunks: with
+// the L1 nudge, "How do I make ISK as a new player?" pulled 5 of 12 context blocks
+// from one security-policy dev blog.
+const DATED = new Set(["ccp_patch_notes", "ccp_dev_blog"]);
+
+/** Retrieval nudge for a chunk ({source?, url?}). */
+export function bonusOf(hit) {
+  const t = tierOf(hit);
+  if (DATED.has(hit?.source) || t.dated) return 0;
+  return TIER_BONUS[t.tier] ?? 0;
+}
 
 /** Short context tag, e.g. "L1 · CCP SDE". */
 export function tierTag(hit) {
