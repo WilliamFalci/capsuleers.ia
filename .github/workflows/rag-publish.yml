@@ -146,7 +146,7 @@ jobs:
           ingestion/.venv/bin/python -m capsuleers_ingestion.run --missions --dump ingestion/data/docs_missions.jsonl
           ingestion/.venv/bin/python -m capsuleers_ingestion.run --from-dump ingestion/data/docs_missions.jsonl
 
-      - name: Ricostruzione completa — fonti CCP (patch notes, dev blog, Support, EVE Academy, guide)
+      - name: Ricostruzione completa — fonti a provider (CCP patch notes, dev blog, Support, EVE Academy, guide; articoli capsuleers.app)
         if: steps.plan.outputs.mode == 'full'
         shell: bash
         run: |
@@ -165,7 +165,8 @@ jobs:
           set -euo pipefail
           ingestion/.venv/bin/python -m capsuleers_ingestion.wiki_update
           ingestion/.venv/bin/python -m capsuleers_ingestion.wormhole_update
-          # Fonti CCP: elenchi con timbro di versione; i corpi solo di cio' che e' cambiato.
+          # Fonti a provider (CCP + articoli capsuleers.app): elenchi con timbro di
+          # versione; i corpi solo di cio' che e' cambiato.
           ingestion/.venv/bin/python -m capsuleers_ingestion.ccp_update
           # Le missioni costano un giro completo su eve-survival anche solo per
           # accorgersi che non e' cambiato nulla (rilevamento per hash, non per
@@ -177,7 +178,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -sf "$QDRANT_URL/collections/eve_knowledge" -o /tmp/coll.json
+          # Subito dopo una ricostruzione completa la collection e' `yellow`:
+          # Qdrant sta ancora costruendo gli indici dei segmenti appena scritti.
+          # E' transitorio, non un guasto — eppure il 2026-09-28 e il 2026-10-01
+          # due ricostruzioni riuscite sono morte qui, e il nuovo SDE e' uscito
+          # solo il giorno dopo con l'incrementale. Si aspetta il green (fino a
+          # 30 minuti); `red` resta un fallimento immediato.
+          for _ in $(seq 1 60); do
+            curl -sf "$QDRANT_URL/collections/eve_knowledge" -o /tmp/coll.json
+            STATUS=$(jq -r '.result.status' /tmp/coll.json)
+            [ "$STATUS" = "yellow" ] || [ "$STATUS" = "grey" ] || break
+            echo "collection $STATUS: ottimizzazione in corso, attendo…"
+            sleep 30
+          done
           STATUS=$(jq -r '.result.status' /tmp/coll.json)
           POINTS=$(jq -r '.result.points_count' /tmp/coll.json)
           DIM=$(jq -r '.result.config.params.vectors.size' /tmp/coll.json)
