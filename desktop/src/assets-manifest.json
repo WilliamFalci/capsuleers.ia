@@ -9,13 +9,13 @@
     "files": [
       {
         "name": "index.vec",
-        "size": 349417472,
-        "sha256": "22d12690febfb458b9e9d29cb2166c033f13185608b7b63818d19ff282ba31be"
+        "size": 353001472,
+        "sha256": "6de02d02f25959c2655f57ec19f802d95e4ed2018c1e66d0984a84441e50f19e"
       },
       {
         "name": "index.meta.jsonl",
-        "size": 57857930,
-        "sha256": "043792147d7fa21af6ba6c79178a527aeda4db9b1d78a42db60cc62ea6a9f1df"
+        "size": 58761985,
+        "sha256": "b981fda182384847e2c7106480d4552a1bbf2464268f4cda805f3644534cbdae"
       },
       {
         "name": "names_index.json",
