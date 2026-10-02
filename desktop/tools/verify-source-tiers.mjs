@@ -37,6 +37,7 @@ const cases = [
   [{ url: "https://wiki.eveuniversity.org/Warp_Scrambler" }, 3],
   [{ url: "https://www.eve-scout.com/" }, 3], [{ url: "https://eve-kill.com/character/1" }, 3],
   [{ url: "https://evemaps.dotlan.net/map/Delve" }, 3], [{ url: "https://zkillboard.com/" }, 3],
+  [{ source: "capsuleers_articles", url: "https://capsuleers.app/articles/x" }, 3],
   [{ url: "https://eve.fandom.com/wiki/Rifter" }, 4], [{ url: "https://sistersprobe.fandom.com/wiki/X" }, 4],
   [{ url: "https://eve-survival.org/?wakka=X" }, 4], [{ url: "https://eveworkbench.com/" }, 4],
   [{ url: "https://www.riley-entertainment.com/gaming/eve-online/" }, 4],
@@ -52,6 +53,7 @@ for (const [hit, want] of cases) {
 }
 ok(bonusOf({ source: "ccp_patch_notes", url: "https://www.eveonline.com/news/view/x" }) === 0
   && bonusOf({ url: "https://www.eveonline.com/news/view/x" }) === 0
+  && bonusOf({ source: "capsuleers_articles", url: "https://capsuleers.app/articles/x" }) === 0
   && bonusOf({ url: null }) === TIER_BONUS[1], "le fonti CCP datate restano L1 ma senza bonus di retrieval");
 ok(["ccp_support", "ccp_academy", "ccp_devdocs"].every((s) => bonusOf({ source: s, url: "https://x/" }) === TIER_BONUS[1]),
   "Support, EVE Academy e guide sviluppatori (non datate) hanno il bonus pieno di L1");

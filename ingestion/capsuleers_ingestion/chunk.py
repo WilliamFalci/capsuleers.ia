@@ -24,7 +24,7 @@ PASSAGE_SIZE = 1400     # prose: split target (~350 tokens)
 OVERLAP = 200
 
 # Sources whose text is long-form prose and benefits from finer splitting.
-_PROSE_SOURCES = {"ccp_patch_notes", "ccp_dev_blog",
+_PROSE_SOURCES = {"ccp_patch_notes", "ccp_dev_blog", "capsuleers_articles",
                   "eve_university_wiki", "eve_survival", "sisters_probe_wiki",
                   "eve_fandom_wiki", "riley_entertainment"}
 

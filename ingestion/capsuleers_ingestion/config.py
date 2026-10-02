@@ -48,6 +48,10 @@ class Config:
     ccp_contentful_token: str = os.getenv(
         "EVE_CONTENTFUL_TOKEN", "BSl3tP6oZ_X_T7kAwXhGF_UB30oG4Hvt03lxol2ENB4")
 
+    # capsuleers.app — the project's own site. Its community articles are read from
+    # the same public endpoint the site's article list uses (no auth).
+    capsuleers_site: str = os.getenv("CAPSULEERS_SITE", "https://capsuleers.app")
+
 
 CONFIG = Config()
 

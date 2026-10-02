@@ -63,6 +63,27 @@ Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
   (`looksLikeFit`) → fit analysis (see below) is injected as context; (2) embed → retrieve
   top-K → build prompt (EVE expert, answers only from context, cites sources, replies in the
   user's language) → stream tokens, then sources.
+- **Hybrid retrieval** — [`retrieval.mjs`](desktop/src/retrieval.mjs) (pure, no models): dense
+  (cosine + tier nudge, pool 200) + **BM25** over title+text (pool 100, built at `init()`, ~2 s /
+  ~25 MB) + **title matches** (every title token named in the query: "Vexor", "Damage Control II"),
+  fused as `dense + 0.1 × (BM25/best + 1 if title match)`, then two diversity caps: a near-copy
+  (cosine ≥ 0.85) of a kept chunk **of the same source** waits behind everything else (SDE families:
+  18 Amulet implants, a hull's SKINs), and **one chunk per page** first. Why: on "dove si droppano gli
+  High-grade Amulet?" dense-only filled the context with the Amulet records and the Feb 2020 patch
+  note that answers it was rank 339; on "quanti slot ha la Vexor?" Vexor SKINs (short → BM25 favourite)
+  and EVE Uni chunks pushed the SDE record out of the budget. Cross-source near-copies are NOT capped:
+  the SDE Caracal and EVE Uni's Caracal page are ≥ 0.85 apart and complementary. **The context budget
+  is the real limit** (6000 chars ≈ 4-6 blocks): engine.mjs picks blocks in RETRIEVAL order, skipping
+  one that doesn't fit, and only then sorts the chosen ones by tier — sorting first let low-relevance
+  L1 records evict the best L3 hit. Measured with `node desktop/tools/verify-retrieval.mjs` (counts
+  what fits the budget): `eval/retrieval.jsonl` dense 26/30 → 30/30, held-out
+  `eval/retrieval-holdout.jsonl` 19/22 → 22/22. `tools/probe-retrieval.mjs "<q>"` shows the ranking,
+  `IA_DEBUG_PROMPT=1` prints the exact prompt. RRF was tried and lost the English Amulet question
+  (rank fusion forgets that "Amulet" is a 22-chunk word and "implants" an 821-chunk one).
+- **Answer eval / model choice** — `node desktop/tools/eval-answers.mjs <model.gguf>` runs the real
+  `ask()` on `eval/answers.jsonl` (facts the answer must contain, reply language, `refuse` rows for
+  unanswerable questions) in a scratch models dir (never touches `.selected-model`). Measure with
+  the GPU free: EVE clients running hold ~7.6 GB of VRAM and change both speed and stability.
 - **Source hierarchy** — [`source-tiers.mjs`](desktop/src/source-tiers.mjs) is the single table
   of how much each source is trusted: **L1** CCP (SDE, ESI, docs, Support, patch notes, dev posts),
   **L2** processed official data (EVE Ref), **L3** structured community (EVE University, EVE-Scout,
@@ -281,6 +302,12 @@ SDE-only swap, which would drop wiki/missions):
   `support` (support.eveonline.com, Zendesk Help Center API, ~310 articles, bodies in the listing),
   `academy` (EVE Academy pages, same Contentful space) and `devdocs` (only `docs/guides/**` of
   `esi/esi-docs` — formulae, security rounding, fitting formats, PI, SKINR; not the ESI/SSO docs).
+  The same registry also holds `articles` ([`capsuleers_app/articles.py`](ingestion/capsuleers_ingestion/capsuleers_app/articles.py)):
+  capsuleers.app's community articles from the site's public `/api/articles` (bodies + `updated_at`
+  in the listing), EN and IT both indexed with their localised URLs, `source=capsuleers_articles`
+  → **L3, dated** (no retrieval nudge) like CCP news. Being in the registry is what makes
+  `ccp_update` / `run --ccp` — and so `rag-check`/`rag-publish` — pick it up with no extra wiring;
+  the tier comes from `source`, not from the registry.
   Each provider LISTS items with a version stamp and no body (Contentful `sys.publishedAt`, Zendesk
   `updated_at`, git blob sha), so `--check` is a handful of requests and only changed items are
   fetched. `ccp_state.json` keeps the Document ids PER ITEM, because an item becomes many Documents
@@ -315,7 +342,7 @@ publish step live in [`ops/`](ops/) (`update.sh`, `wiki-update.sh`, `missions-up
 
 ## Data sources & licensing
 
-Official SDE (authoritative), EVE University Wiki (**CC BY-NC-SA 4.0** → the knowledge index is
+Official SDE (authoritative), capsuleers.app community articles (the project's own site), EVE University Wiki (**CC BY-NC-SA 4.0** → the knowledge index is
 effectively **non-commercial**), EVE Sister Core Scanner Probe Fandom wiki (CC BY-SA, German — exploration
 sites), EVE Wiki on Fandom (CC BY-SA, EN), Riley Entertainment guides (no explicit licence — opt-in
 `--riley`, never in `--all`), eve-survival (missions), Anoikis (wormhole effects/statics), EVE Ref

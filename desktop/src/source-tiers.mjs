@@ -37,6 +37,7 @@ const BY_SOURCE = {
   ccp_academy: [1, "EVE Academy"],
   ccp_devdocs: [1, "CCP developer docs"],
   eve_university_wiki: [3, "EVE University"],
+  capsuleers_articles: [3, "capsuleers.app"],
   eve_fandom_wiki: [4, "EVE Wiki (Fandom)"],
   sisters_probe_wiki: [4, "Sisters Probe Wiki (Fandom)"],
   eve_survival: [4, "eve-survival.org"],
@@ -108,7 +109,9 @@ export const TIER_BONUS = { 1: 0.015, 2: 0.008, 3: 0, 4: -0.015 };
 // report, a security-policy post). Measured on the index + 4 991 CCP chunks: with
 // the L1 nudge, "How do I make ISK as a new player?" pulled 5 of 12 context blocks
 // from one security-policy dev blog.
-const DATED = new Set(["ccp_patch_notes", "ccp_dev_blog"]);
+// capsuleers.app articles are news too (event coverage, battle reports), dated in
+// their title the same way.
+const DATED = new Set(["ccp_patch_notes", "ccp_dev_blog", "capsuleers_articles"]);
 
 /** Retrieval nudge for a chunk ({source?, url?}). */
 export function bonusOf(hit) {

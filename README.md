@@ -130,6 +130,7 @@ an explicit confirmation. Latest review:
 - **EVE University Wiki** (**CC BY-NC-SA 4.0**, non-commercial) — mechanics, terminology, mining, exploration.
 - **EVE Sister Core Scanner Probe Wiki** (Fandom, DE — CC BY-SA) — exploration sites: anomalies, signatures, relic & data sites.
 - **EVE Wiki** (`eve.fandom.com`, EN — CC BY-SA) — general EVE encyclopedia.
+- **capsuleers.app articles** — the community articles published on the project's site (EN + IT).
 - **eve-survival.org** — PVE mission guides *(license not explicitly stated: see the note in
   [`ingestion`](ingestion/capsuleers_ingestion/missions/eve_survival.py))*.
 - **Riley Entertainment** — combat-site ship fits, COSMOS guides, hacking/relic/data loot stats *(no explicit licence → opt-in `--riley`, never part of `--all`)*.
