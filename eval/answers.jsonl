@@ -1,0 +1,25 @@
+{"id": "amulet-it", "q": "dove si droppano gli impianti High-grade amulet in eve online?", "lang": "it", "must": [["Blood Raider"]]}
+{"id": "amulet-en", "q": "where do High-grade Amulet implants drop?", "lang": "en", "must": [["Blood Raider"]]}
+{"id": "ore-doubled", "q": "quando sono state raddoppiate le quantità di ore nelle asteroid belt?", "lang": "it", "must": [["19.11", "2021-12-08", "dicembre 2021", "8 dicembre 2021"]]}
+{"id": "secstatus", "q": "come si alza il security status?", "lang": "it", "must": [["rat", "pirat", "NPC", "clone soldier", "tag"]]}
+{"id": "pochven", "q": "come si entra in Pochven?", "lang": "it", "must": [["filament"], ["wormhole"]]}
+{"id": "caracal", "q": "quali skill servono per pilotare una Caracal?", "lang": "it", "must": [["Caldari Cruiser"], ["Caldari Destroyer"]]}
+{"id": "dc2", "q": "requisiti skill del Damage Control II", "lang": "it", "must": [["Hull Upgrades"], ["4", "IV"]]}
+{"id": "jumpclone", "q": "quale skill aumenta il numero di jump clone?", "lang": "it", "must": [["Infomorph Psychology"]]}
+{"id": "thera-en", "q": "what is Thera?", "lang": "en", "must": [["wormhole"]]}
+{"id": "hacking", "q": "che moduli servono per fare data site e relic site?", "lang": "it", "must": [["Data Analyzer"], ["Relic Analyzer"]]}
+{"id": "abyssal-en", "q": "how long do I have to complete an abyssal deadspace site?", "lang": "en", "must": [["20 minute", "20-minute", "20 min"]]}
+{"id": "lp-en", "q": "how do I earn loyalty points?", "lang": "en", "must": [["mission"]]}
+{"id": "skyhook", "q": "cos'è un Orbital Skyhook?", "lang": "it", "must": [["pianet", "planet"]]}
+{"id": "injector", "q": "quanti skill point dà un Large Skill Injector?", "lang": "it", "must": [["500.000", "500,000", "500 000", "500000", "500k"]]}
+{"id": "worlds-collide", "q": "Worlds Collide level 4: contro quali fazioni si combatte?", "lang": "it", "must": [["Sansha", "Gallente"]]}
+{"id": "unanswerable", "q": "qual è il colore preferito del CEO di Fenris Creations?", "lang": "it", "refuse": true}
+{"id": "gila-bonus", "q": "che bonus ha la Gila?", "lang": "it", "must": [["drone"], ["500%"]]}
+{"id": "gila-skills-en", "q": "which skills do I need to fly a Gila?", "lang": "en", "must": [["Caldari Cruiser"], ["Gallente Cruiser"]]}
+{"id": "jita", "q": "in che regione si trova Jita e che security ha?", "lang": "it", "must": [["The Forge"], ["0.9"]]}
+{"id": "vexor-slots", "q": "quanti high slot, mid slot e low slot ha la Vexor?", "lang": "it", "must": [["4"], ["5"]]}
+{"id": "drake-bonus-en", "q": "what are the Drake's hull bonuses?", "lang": "en", "must": [["shield resist"], ["Heavy Missile", "missile"]]}
+{"id": "entosis", "q": "cosa non si può fare mentre un Entosis Link è attivo?", "lang": "it", "must": [["cloak", "warp", "dock"]]}
+{"id": "plex-en", "q": "where can I get PLEX?", "lang": "en", "must": [["market"]]}
+{"id": "jc-count", "q": "quanti jump clone posso avere con Infomorph Psychology al livello 5?", "lang": "it", "must": [["5", "cinque"]]}
+{"id": "unanswerable-2", "q": "in che data uscirà EVE Online 2?", "lang": "it", "refuse": true}

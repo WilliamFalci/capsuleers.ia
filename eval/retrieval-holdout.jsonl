@@ -1,0 +1,22 @@
+{"id": "pi-it", "q": "come si comincia con il planetary interaction?", "want": ["planetary_industry", "planetary-interaction", "planetary_commodities"]}
+{"id": "probe-en", "q": "how do I scan down signatures with probes?", "want": ["probe_scanning", "/scanning", "-scanning"]}
+{"id": "jf-it", "q": "cosa sono i jump freighter e a cosa servono?", "want": ["jump_freighter"]}
+{"id": "fw-it", "q": "come funziona la faction warfare?", "want": ["faction_warfare", "factional-warfare"]}
+{"id": "muta-en", "q": "how do mutaplasmids work?", "want": ["mutaplasmids"]}
+{"id": "standings-it", "q": "come si alzano le standing con una fazione NPC?", "want": ["standings", "faction_warfare_standings"]}
+{"id": "jumpdrive-en", "q": "how does a capital jump drive work?", "want": ["jump_drives", "jump_drive"]}
+{"id": "contracts-it", "q": "come funzionano i contratti?", "want": ["wiki.eveuniversity.org/contracts "]}
+{"id": "crystals-en", "q": "which mining crystals should I use?", "want": ["mining_crystals"]}
+{"id": "ratting-it", "q": "come si fa ratting in nullsec?", "want": ["wiki.eveuniversity.org/ratting ", "combat_site"]}
+{"id": "bookmark-en", "q": "how do bookmarks work?", "want": ["wiki.eveuniversity.org/bookmark "]}
+{"id": "overview-it", "q": "come configuro l'overview?", "want": ["overview"]}
+{"id": "gas-en", "q": "how does gas cloud harvesting work?", "want": ["gas_cloud_harvesting", "gas_mining"]}
+{"id": "ice-it", "q": "come si mina il ghiaccio?", "want": ["ice_harvesting", "ice_processing"]}
+{"id": "invention-it", "q": "come funziona l'invention per i T2?", "want": ["invention"]}
+{"id": "reactions-en", "q": "how do reactions work in industry?", "want": ["reactions"]}
+{"id": "logi-it", "q": "cosa fa una nave logistics in flotta?", "want": ["wiki.eveuniversity.org/logistics ", "logistics_ship"]}
+{"id": "dictor-en", "q": "what do interdictors do?", "want": ["interdictors", "interdictor"]}
+{"id": "cloak-it", "q": "come funziona il cloak trick?", "want": ["cloak_trick"]}
+{"id": "blops-en", "q": "what are Black Ops battleships used for?", "want": ["black_ops"]}
+{"id": "titan-it", "q": "cosa fa il doomsday di un titan?", "want": ["titans", "doomsday", "/titan "]}
+{"id": "caps-hs-en", "q": "can I fly capital ships in high security space?", "want": ["capital-ships-in-high-security-space"]}

@@ -21,6 +21,8 @@ ingestion/data/
 *.bz2
 *.zip
 *.jsonl
+# …but the eval sets are hand-written test data, not dumps: they belong in the repo.
+!eval/*.jsonl
 
 # Desktop standalone
 desktop/node_modules/

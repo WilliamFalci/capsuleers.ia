@@ -13,6 +13,7 @@ import { maybeMcp, resetDoctrineMemory } from "./mcp-intel.mjs";
 import { maybeWorkbench, fitIntent, shipFromQuery, runFitSearch, resetFitMemory } from "./eveworkbench.mjs";
 import { linkify, detectLang, configureDataDir as linksDataDir } from "./links.mjs";
 import { tierOf, tierTag, bonusOf } from "./source-tiers.mjs";
+import { buildLexicalIndex, retrieve } from "./retrieval.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -92,6 +93,7 @@ const SYSTEM = `Sei un assistente esperto di EVE Online. Rispondi usando SOLO il
 - Scrivi in italiano CORRETTO e grammaticale: niente errori di ortografia né parole inventate (es. "alleanza" non "alianza", "schierare/deployare" non "deplofare"). Se non sei certo di una parola italiana, usane una più semplice e corretta.
 - QUANTITÀ E NUMERI (tassativo): quando il contesto riporta quantità, prezzi, tempi, percentuali o livelli (es. "3× Capital Capacitor Battery", "200× Life Support Backup Unit", "skill ... 3", ISK, ore), riportali SEMPRE ed ESATTAMENTE come nel contesto, senza ometterli né arrotondarli. In una lista di materiali/requisiti METTI la quantità davanti a OGNI voce (es. "3× Capital Capacitor Battery", non "Capital Capacitor Battery"). Non aggiungere descrizioni inventate non presenti nel contesto.
 - Usa SOLO le informazioni nel contesto. Se non bastano, dillo ("Non ho questa informazione nelle fonti"); non inventare. Sii conciso e preciso.
+- PRIMA di dire che l'informazione manca, rileggi TUTTI i blocchi fino all'ultimo: la risposta è spesso in un blocco in fondo, e quasi sempre in inglese e con parole diverse dalla domanda. Equivalenze: "droppare"/"dove si trova" = drop, loot, loot tables, found in, dropped by; "come si ottiene" = obtain, reward, Loyalty Store/LP store, blueprint, manufactured, sold by; un set "renamed"/"moved to" indica chi lo fornisce ADESSO. Se un blocco risponde anche solo in parte, usalo e cita la fonte.
 - GERARCHIA DELLE FONTI: ogni blocco del contesto è etichettato L1 (fonte primaria CCP: SDE, ESI, patch notes), L2 (dati ufficiali elaborati, es. EVE Ref), L3 (community strutturata, es. EVE University, EVE-Scout, eve-kill) o L4 (community generica, es. wiki Fandom). Se due blocchi si contraddicono, vale quello col livello PIÙ BASSO (L1 batte L2, L2 batte L3, L3 batte L4). Un dato numerico (valori, bonus, requisiti) va preso dal livello più basso che lo riporta.
 - DATE DELLE FONTI CCP: le patch notes e i dev blog CCP (L1) portano la data nel titolo e descrivono una modifica A QUELLA DATA, che può essere stata superata da una successiva. SDE ed ESI descrivono lo stato ATTUALE del gioco e prevalgono su di loro; fra due patch notes/dev blog in contraddizione vale il più recente. Quando citi una patch note, indica la sua data.
 - Le etichette L1/L2/L3/L4 servono SOLO a te per pesare le fonti: NON scriverle nella risposta. Se serve, nomina la fonte (es. "secondo le patch notes del 2024-06-07", "il Support di CCP").`;
@@ -137,7 +139,7 @@ export function expandQuery(q) {
   return out;
 }
 
-let llama, embedCtx, chatModel, index;
+let llama, embedCtx, chatModel, index, lexIndex;
 let currentModelFile = null;  // file name (.gguf) of the chat model currently loaded
 let history = [];  // conversation: [{ q, a }] for follow-ups
 let convLang = null;  // language of the current conversation (so follow-ups don't flip)
@@ -491,18 +493,9 @@ function loadIndex() {
   return { vectors, count, meta, bonus };
 }
 
-function topK(query) {
-  const q = Float32Array.from(query);
-  let s = 0; for (let j = 0; j < DIM; j++) s += q[j] ** 2;
-  const inv = 1 / (Math.sqrt(s) || 1); for (let j = 0; j < DIM; j++) q[j] *= inv;
-  const scores = [];
-  for (let i = 0; i < index.count; i++) {
-    let dot = 0; const off = i * DIM;
-    for (let j = 0; j < DIM; j++) dot += index.vectors[off + j] * q[j];
-    scores.push([dot + index.bonus[i], i]);
-  }
-  scores.sort((a, b) => b[0] - a[0]);
-  return scores.slice(0, TOP_K).map(([, i]) => index.meta[i]);
+// Hybrid retrieval (dense + BM25, near-duplicates capped): see retrieval.mjs.
+function topK(query, text) {
+  return retrieve(index, lexIndex, query, text, TOP_K).map((i) => index.meta[i]);
 }
 
 // ── Chat model management (user choice + performance estimate) ────────────
@@ -659,6 +652,7 @@ function pickInitialModel() {
 export async function init(onStatus = () => {}) {
   onStatus({ k: "index" });
   index = loadIndex();
+  lexIndex = buildLexicalIndex(index.meta);  // ~2 s for 85k chunks
   onStatus({ k: "models", count: index.count });
   llama = await getLlama();
   // Embeddings on CPU (gpuLayers: 0): bge-m3 runs once per question on a short
@@ -733,8 +727,9 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   //    last turn's ship onto it). Otherwise: condense the follow-up.
   const selfContained = /https?:\/\/|\bkill\s?mail\b|\b\d{6,}\b/i.test(question);
   const standalone = (isFit && fitShip) ? `${fitShip} nave ruolo bonus` : (selfContained ? question : await condense(question));
-  const { vector } = await embedCtx.getEmbeddingFor(expandQuery(standalone));
-  const hits = topK(vector);
+  const retrievalQuery = expandQuery(standalone);
+  const { vector } = await embedCtx.getEmbeddingFor(retrievalQuery);
+  const hits = topK(vector, retrievalQuery);
 
   // 3. Live price / intel, if the question calls for it (uses the original question
   //    to preserve entity proper names).
@@ -805,12 +800,19 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
   // Primary sources first: a small model weighs the head of the context most, and
   // the conflict rule ("the lower level wins") is only as good as the model's
   // attention to the L1 block. Stable sort — retrieval order is kept within a tier.
-  const byTier = hits.map((h, i) => [tierOf(h).tier, i, h]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
-  if (!mcp.text) for (const h of byTier) {
+  // WHICH blocks fit the budget is decided in retrieval order, and only the chosen ones
+  // are then sorted by tier: sorting first let low-relevance L1 records (SDE look-alikes)
+  // fill the 6000 chars and drop the best L3 hit ("come si alza il security status?"
+  // lost EVE Uni's "Repairing security status"). A block too long to fit is skipped,
+  // not the end of the context.
+  const chosen = [];
+  if (!mcp.text) for (const [i, h] of hits.entries()) {
     const block = `[${tierTag(h)} · ${h.type}] ${h.title}\n${h.text}`;
-    if (used + block.length > MAX_CONTEXT_CHARS) break;
-    context += block + "\n\n---\n\n"; used += block.length;
+    if (used + block.length > MAX_CONTEXT_CHARS) continue;
+    chosen.push([tierOf(h).tier, i, block]); used += block.length;
   }
+  chosen.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const [, , block] of chosen) context += block + "\n\n---\n\n";
 
   // At most the LAST turn, and only if it's actually relevant to the new question
   // (embedding similarity). Irrelevant history makes the model misread the prompt.
@@ -870,6 +872,8 @@ export async function ask(question, onToken = () => {}, uiLang = null) {
     + (fitInfo ? `[L2 · eve-fit-engine — ANALISI DEL FIT, dati autorevoli]\n${fitInfo}\n\n` : "")
     + `${context}\n`
     + `DOMANDA: ${question}\n\n${(LANG_DIRECTIVE[qLang] || LANG_DIRECTIVE.en)}${directiveText}`;
+  // Dev aid: the exact prompt the model sees (tools/ and manual debugging only).
+  if (process.env.IA_DEBUG_PROMPT) console.error(`\n----- PROMPT -----\n${userMsg}\n----- /PROMPT -----`);
 
   // 5. Generation (GPU, streaming). Cancelable via AbortSignal: if the app closes
   //    while the model is answering, cancel() interrupts the prompt and here we dispose
