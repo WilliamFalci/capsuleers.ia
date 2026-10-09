@@ -377,5 +377,6 @@ generatore del sito — `npm run brand:icons -- <cartella>` in capsuleers.websit
 (`scripts/brand/`), che rende l'emblema Capsuleers con il suffisso
 `.IA`. Non ritoccarle a mano e non generarle da qui: si rifanno li' e si
 copiano. Fino a 64 px (tray, icon-32/64, le taglie piccole dell'`.ico`) si usa
-la variante **mark** senza testo, che a quelle dimensioni resta leggibile;
+la variante **mark** — la sola gemma semplificata, senza disco ne' anello: con
+quelli a 32 px era una macchia;
 icon-256, icon.png e le taglie 128/256 dell'`.ico` sono l'emblema pieno.
