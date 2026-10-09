@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
+<title>Capsuleers mark</title>
+<circle cx="500" cy="500" r="490" fill="#141417"/>
+<circle cx="500" cy="500" r="462" fill="none" stroke="#ea580c" stroke-width="44"/>
+<g transform="translate(197.92 146.00) scale(1.18)">
+<polygon fill="#2a2a33" points="176,40 336,40 300,110 212,110"/>
+<polygon fill="#202027" points="212,110 176,40 104,150 124,184 176,198"/>
+<polygon fill="#202027" points="300,110 336,40 408,150 388,184 336,198"/>
+<polygon fill="#202027" points="212,110 300,110 336,198 300,284 212,284 176,198"/>
+<polygon fill="#202027" points="176,198 124,184 182,322 212,284"/>
+<polygon fill="#202027" points="336,198 388,184 330,322 300,284"/>
+<polygon fill="#202027" points="124,184 94,184 94,376 182,322"/>
+<polygon fill="#202027" points="388,184 418,184 418,376 330,322"/>
+<polygon fill="#2a2a33" points="212,284 300,284 330,322 182,322"/>
+<polygon fill="#202027" points="182,322 330,322 418,376 256,560 94,376"/>
+<g fill="none" stroke="#ea580c" stroke-linejoin="round" stroke-linecap="round"><path stroke-width="13" d="M212 110 L300 110 L336 198 L300 284 L212 284 L176 198 Z M176 40 L212 110 M336 40 L300 110 M176 198 L124 184 M336 198 L388 184 M124 184 L182 322 M388 184 L330 322 M212 284 L182 322 M300 284 L330 322 M182 322 L330 322 M182 322 L94 376 M330 322 L418 376 M226 322 L256 560 M286 322 L256 560 M182 322 L212 510 M330 322 L300 510"/><path stroke-width="22" d="M176 40 L336 40 L408 150 L388 184 L418 184 L418 376 L256 560 L94 376 L94 184 L124 184 L104 150 Z"/></g></g>
+</svg>

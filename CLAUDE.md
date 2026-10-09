@@ -368,3 +368,14 @@ Hardened 2026-06-29 — full write-up in [`docs/security-review-2026-06-29.md`](
   Ollama serving + Qdrant at query-time). The shipped product is now a self-contained Electron app with
   `node-llama-cpp` + an in-RAM index and no runtime server — treat the runtime sections of that doc as
   historical; this file + [`README.md`](README.md) are the current source of truth.
+
+## Icone e marchio
+
+Le icone dell'app (`desktop/assets/icon-{32,64,256}.png`, `tray.png`,
+`desktop/build/icon.png` e `icon.ico`) e `docs/brand/emblem*.svg` vengono dal
+generatore del sito — `npm run brand:icons -- <cartella>` in capsuleers.website
+(`scripts/brand/`), che rende l'emblema Capsuleers con il suffisso
+`.IA`. Non ritoccarle a mano e non generarle da qui: si rifanno li' e si
+copiano. Fino a 64 px (tray, icon-32/64, le taglie piccole dell'`.ico`) si usa
+la variante **mark** senza testo, che a quelle dimensioni resta leggibile;
+icon-256, icon.png e le taglie 128/256 dell'`.ico` sono l'emblema pieno.

@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/brand/emblem.svg" width="180" alt="Capsuleers.IA"></p>
+
 # Capsuleers.IA
 
 An expert AI assistant for **EVE Online** — a **standalone desktop app**, cross-platform,
