@@ -41,9 +41,9 @@ jobs:
       run:
         working-directory: desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -69,7 +69,7 @@ jobs:
       # recuperare un binario da una `workflow_dispatch` nel giro di poche ore.
       # Il default di 90 giorni terrebbe installer da centinaia di MB per un
       # trimestre per un caso d'uso che dura un pomeriggio.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: capsuleers-ia-${{ matrix.label }}
           path: |
