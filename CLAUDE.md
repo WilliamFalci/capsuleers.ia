@@ -1,398 +1,48 @@
-# CLAUDE.md
+# capsuleers.ia
 
-Guidance for Claude Code (claude.ai/code) when working in this repository.
+Assistente IA desktop per EVE Online, 100% locale con GPU: LLM via `node-llama-cpp` su indice RAG in RAM,
+risposte con fonti citate in IT/EN, più intel Local/D-Scan e dati live da API pubbliche.
+Due parti: `desktop/` (Electron, il prodotto; nessun server/Python a runtime) e `ingestion/` (Python,
+offline, genera l'indice). Percorsi relativi a questa cartella; orchestrazione in `../CLAUDE.md`.
 
-## Project Overview
-
-**Capsuleers.IA** — a **standalone, cross-platform, 100% local, GPU-accelerated** desktop
-AI assistant for **EVE Online**. It answers questions (skills, fitting, terminology, PVE,
-wormholes, sovereignty, exploration, industry…) **with cited sources**, in Italian or
-English (auto-detected). A local LLM (via `node-llama-cpp`) answers over a **RAG** index of
-EVE knowledge. Nothing leaves the machine except optional lookups to public EVE APIs for the
-live-data features.
-
-The companion website / web platform lives in a separate repo (**Capsuleers.Site**); this
-repo is the desktop app + the offline data factory that feeds it.
-
-## Two parts
-
-| Part | Path | Runtime | Role |
-|---|---|---|---|
-| **App** | [`desktop/`](desktop/) | Electron + Node | The shipped product. No server, no Qdrant/Ollama, no Python at runtime. |
-| **Data factory** | [`ingestion/`](ingestion/) | Python (build-time, offline) | Generates the knowledge-base index from EVE sources; run by whoever builds a release. |
-
-The app is self-contained: at runtime it only needs the GGUF models + the prebuilt index
-(downloaded once on first launch). The Python pipeline never runs on an end user's machine.
-
-## Commands
-
+## Comandi
 ```bash
-# Desktop app (desktop/)
-cd desktop
-npm install
-npm start              # dev — expects models/ + data/ present locally
-npm run dist:linux:cuda   # Linux AppImage, NVIDIA/CUDA variant
-npm run dist:linux:vulkan # Linux AppImage, AMD/Vulkan variant
-npm run dist:win:cuda     # Windows NSIS installer, NVIDIA/CUDA variant (build on Windows)
-npm run dist:win:vulkan   # Windows NSIS installer, AMD/Vulkan variant (build on Windows)
-npm run validate-hf    # verify embedding + catalog models exist on HuggingFace
-npm run build-index    # (re)build the vector index from a dump
+cd desktop && npm install
+npm start                                  # dev — richiede models/ + data/ locali
+npm run pack                               # cartella non pacchettizzata
+npm run dist:linux[:cuda|:vulkan]          # AppImage (base / NVIDIA / AMD)
+npm run dist:win[:cuda|:vulkan]            # NSIS (build su Windows)
+npm run validate-hf                        # modelli embedding + catalogo esistono su HuggingFace
+npm run build-index | rag | export-index   # indice vettoriale da dump / CLI RAG / export
+node desktop/tools/verify-{retrieval,source-tiers,query-rules,intel-backend}.mjs   # verifiche (dalla root)
+node desktop/tools/eval-answers.mjs <model.gguf>   # eval risposte (GPU libera)
 
-# Data factory (ingestion/) — offline, needs Qdrant + Ollama only for the index step
-cd ingestion
-python3 -m venv .venv && . .venv/bin/activate && pip install -e .
-python -m capsuleers_ingestion.run --sde   --dump data/docs_sde.jsonl   # SDE → chunks
-python -m capsuleers_ingestion.run --wiki  --dump data/docs_wiki.jsonl  # all MediaWiki sources (~40 min)
-python -m capsuleers_ingestion.run --names-index data/names_index.json  # name→typeID (price lookups)
-python -m capsuleers_ingestion.run --from-dump data/docs_sde.jsonl      # index into Qdrant
-python -m capsuleers_ingestion.update                                   # daily SDE build check + zero-downtime re-index
+cd ingestion && python3 -m venv .venv && . .venv/bin/activate && pip install -e .
+python -m capsuleers_ingestion.run --sde --dump data/docs_sde.jsonl    # anche --wiki, --names-index, --from-dump, --ccp
+python -m capsuleers_ingestion.update                                  # check SDE + re-index zero-downtime
+pytest ingestion/tests                                                 # test offline
 ```
+Flusso completo: `RUNNING.md`; rilascio app/indice: `RELEASING.md`.
 
-See [`RUNNING.md`](RUNNING.md) for the full local-from-scratch flow and [`RELEASING.md`](RELEASING.md)
-for cutting an app/index release.
+## Vincoli
+- User-Agent solo dalle costanti `desktop/src/user-agent.mjs` e `ingestion/capsuleers_ingestion/config.py`.
+- Nuova fonte → riga in `desktop/src/source-tiers.mjs` (altrimenti finisce L4); `verify-source-tiers` fallisce.
+- `eve-fit-engine/data/**` in `asarUnpack`; non reintrodurre estimatore All-V, `fitlookup.py` o keyword `dogma`.
+- `desktop/src/capsuleers-api.mjs` identico a quello di intel: modificali insieme.
+- Sicurezza da non regredire: renderer sandbox, `esc()` quote-safe, CSP, fuses, conferma main-side su
+  `data:wipe-all`, basename `*.gguf` nei handler dei modelli, nessuna telemetria (dettaglio security.md).
+- Riley solo opt-in (`--riley`), mai in `--all`; indice non commerciale (EVE Uni CC BY-NC-SA).
+- Dopo un bump SDE verifica che sia uscita la release `index-<date>`: `rag-check` verde vuol dire solo "rilevato".
+- Icone: non modificarle né generarle qui (vedi brand.md).
 
-## Desktop runtime architecture
-
-Orchestrator is [`desktop/src/engine.mjs`](desktop/src/engine.mjs):
-
-- **Models** — `node-llama-cpp` (GPU **Vulkan/Metal/CUDA**, CPU fallback). Embeddings via
-  **bge-m3 (Q8)**; chat model from an updatable catalog ([`models-catalog.json`](desktop/src/models-catalog.json)),
-  Q4 GGUF. `DIM = 1024`, `TOP_K = 12`, `MAX_CONTEXT_CHARS = 6000`.
-- **Index** — in-RAM vectors (cosine), no DB. Loaded from `index.vec` + `index.meta.jsonl`.
-- **`ask(question, onToken, uiLang)`** pipeline: (1) if the message is a pasted EFT fit
-  (`looksLikeFit`) → fit analysis (see below) is injected as context; (2) embed → retrieve
-  top-K → build prompt (EVE expert, answers only from context, cites sources, replies in the
-  user's language) → stream tokens, then sources.
-- **Hybrid retrieval** — [`retrieval.mjs`](desktop/src/retrieval.mjs) (pure, no models): dense
-  (cosine + tier nudge, pool 200) + **BM25** over title+text (pool 100, built at `init()`, ~2 s /
-  ~25 MB) + **title matches** (every title token named in the query: "Vexor", "Damage Control II"),
-  fused as `dense + 0.1 × (BM25/best + 1 if title match)`, then two diversity caps: a near-copy
-  (cosine ≥ 0.85) of a kept chunk **of the same source** waits behind everything else (SDE families:
-  18 Amulet implants, a hull's SKINs), and **one chunk per page** first. Why: on "dove si droppano gli
-  High-grade Amulet?" dense-only filled the context with the Amulet records and the Feb 2020 patch
-  note that answers it was rank 339; on "quanti slot ha la Vexor?" Vexor SKINs (short → BM25 favourite)
-  and EVE Uni chunks pushed the SDE record out of the budget. Cross-source near-copies are NOT capped:
-  the SDE Caracal and EVE Uni's Caracal page are ≥ 0.85 apart and complementary. **The context budget
-  is the real limit** (6000 chars ≈ 4-6 blocks): engine.mjs picks blocks in RETRIEVAL order, skipping
-  one that doesn't fit, and only then sorts the chosen ones by tier — sorting first let low-relevance
-  L1 records evict the best L3 hit. Measured with `node desktop/tools/verify-retrieval.mjs` (counts
-  what fits the budget): `eval/retrieval.jsonl` dense 26/30 → 30/30, held-out
-  `eval/retrieval-holdout.jsonl` 19/22 → 22/22. `tools/probe-retrieval.mjs "<q>"` shows the ranking,
-  `IA_DEBUG_PROMPT=1` prints the exact prompt. RRF was tried and lost the English Amulet question
-  (rank fusion forgets that "Amulet" is a 22-chunk word and "implants" an 821-chunk one).
-- **Answer eval / model choice** — `node desktop/tools/eval-answers.mjs <model.gguf>` runs the real
-  `ask()` on `eval/answers.jsonl` (facts the answer must contain, reply language, `refuse` rows for
-  unanswerable questions) in a scratch models dir (never touches `.selected-model`). Measure with
-  the GPU free: EVE clients running hold ~7.6 GB of VRAM and change both speed and stability.
-- **Source hierarchy** — [`source-tiers.mjs`](desktop/src/source-tiers.mjs) is the single table
-  of how much each source is trusted: **L1** CCP (SDE, ESI, docs, Support, patch notes, dev posts),
-  **L2** processed official data (EVE Ref), **L3** structured community (EVE University, EVE-Scout,
-  Anoikis, eve-kill, Dotlan, Fuzzwork, zKillboard…), **L4** general community (Fandom wikis,
-  eve-survival, Riley, EVE Workbench). It drives three things: a small retrieval nudge
-  (`TIER_BONUS`, ±0.015 added to the cosine score, precomputed per chunk at index load); the tag on
-  every context block (`[L1 · CCP SDE · item]`, live blocks too) plus a SYSTEM rule "on conflict the
-  lower level wins"; and the `tier` on every cited source (sorted primary-first, chip in the UI).
-  The tier is derived from `source` when the index carries it, else from the URL host — so it works on
-  index releases published before `source` was exported (only SDE chunks have `url: null`).
-  **Dated L1 sources (CCP patch notes, dev blogs) get NO retrieval nudge** (`bonusOf`): they stay L1
-  for the tag and the conflict rule, but describe a change as of their date and may be superseded —
-  and the SYSTEM prompt says SDE/ESI beat them, and among them the newest wins. Support, EVE Academy
-  and the dev-docs guides describe the CURRENT game and get the full L1 nudge. The retrieved blocks
-  enter the context **sorted by tier** (stable within a tier): a 4B model weighs the head of the
-  context most, and the conflict rule is only as good as its attention to the L1 block — on "how does
-  sov work" that is what moved the answer from TCU/I-Hub to the Equinox Sovereignty Hub. The prompt
-  forbids writing the L-labels in the answer (the model did). **A new
-  source needs a row there**, or it silently lands at L4: `node desktop/tools/verify-source-tiers.mjs`
-  fails on any host without one, and measures the nudge on real questions (median top-1↔top-12 gap
-  0.087; 0.9 chunks of 12 replaced per question — it reorders the tail, never the head).
-- **Prices come at two levels and are NOT in conflict**: EVE Ref's global reference average (L2) and
-  the live Jita 4-4 order book from Fuzzwork (L3, `jitaPrice` in [`prices.mjs`](desktop/src/prices.mjs),
-  5-min cache = the server's own expiry). Each is its own tagged block and cited source, and the live
-  directive says so explicitly — otherwise "the lower level wins" would make the model prefer the
-  global average over the real Jita price. Prices under 100 ISK keep two decimals (Tritanium 3.82 vs
-  3.65 was rounded to "4 / 4"). The fit analysis block is tagged **L2 · eve-fit-engine**.
-- **Query rules** (`expandQuery`, `intelQuery`, both exported and checked by
-  `node desktop/tools/verify-query-rules.mjs`): the killboard-stats trigger needs a word end on
-  `stat` — without it "STATus di sicurezza" went to eve-kill as a pilot name and the answer cited the
-  killboard; and in an ITALIAN sentence about mining "ore" is REPLACED with "minerale (ore)" (Italian
-  "ore" = hours), never after a count ("quante ore", "3 ore"). Measured: appending "(mining ore)"
-  pushed the target patch note from rank 5 to 18, substituting brought it to 2.
-- **`configurePaths({ modelsDir, dataDir })`** points sibling modules at the userData data dir
-  ([`prices.mjs`](desktop/src/prices.mjs), [`links.mjs`](desktop/src/links.mjs)) — otherwise the
-  packaged app looks for lookup files inside `app.asar`. **`fit.mjs` no longer needs this** (its
-  SDE is bundled in the `eve-fit-engine` package).
-
-### Live-data feature modules (`desktop/src/`)
-
-- [`prices.mjs`](desktop/src/prices.mjs) — EVE Ref reference prices (`priceByName`, `isKnownType`).
-- [`capsuleers-api.mjs`](desktop/src/capsuleers-api.mjs) — **capsuleers.app is the killboard/intel
-  backend**, through the site's **public API v1** (`/api/v1/…`, contract in the site's
-  `shared/api-v1.ts`: stable paths and shapes, rate-limited per IP and class, 404 "no such entity" kept
-  apart from 503 "upstream unwell"). This is the only file that knows the routes. **Deploy order does not
-  matter**: every v1 response carries `X-Capsuleers-Api`, and a response without it means the site in
-  production predates v1 — the call is retried on the legacy route serving the same data and the verdict
-  is remembered (`apiFamily()`). Every call returns `null` on any failure and the caller falls back to
-  eve-kill direct, so a site outage degrades to the old behaviour. Measured: a 62-name Local takes **0.9-1.7 s via the site vs 30 s via eve-kill**
-  (one scan request instead of ~3 per pilot). `node desktop/tools/verify-intel-backend.mjs` checks both
-  paths live (`CAPSULEERS_SITE=http://127.0.0.1:9 … --fallback` for the eve-kill one).
-- [`intel.mjs`](desktop/src/intel.mjs) — pilot/corp/alliance intel. Names → ids via **ESI
-  `/universe/ids`** (L1, exact, every matching category = the disambiguation), with eve-kill search
-  merged in for ticker-like queries (≤5 chars, no space: "CONDI" is a pilot's name AND an alliance
-  ticker, and ESI cannot search tickers) and as the fallback for partial names. Pilot: lifetime totals
-  from the site's `profile` (eve-kill behind the site's cache) + 90-day intel from its archive; the pilot
-  card is built from those (no `capsuleer_dossier` call; that MCP tool is only the fallback). Corp /
-  alliance: site `stats/alltime`; kills/losses: site `killboard/search`; battles: site entity panels.
-  **The two windows are labelled on every line** ("Totali DI SEMPRE", "ultimi 90 giorni"): unlabelled,
-  the model presented 6 224 lifetime kills as 90-day activity.
-  The clipboard-scan paths: `localIntel()` (ESI ids + ONE site scan + ESI bulk affiliations; the
-  numbers are the last **90 days**, `window: 90` on the row, "90g" in the UI; the danger thresholds are
-  therefore 30/150 kills, not the lifetime 100/500 — measured on 30 real pilots, 20 of 30 same class, the
-  rest being idle veterans a Local should NOT flag; the scan's `efficiency` is a kill/loss COUNT ratio,
-  never shown as ISK efficiency),
-  `analyzeDScan()` (offline D-Scan composition via the bundled `eve-fit-engine` SDE —
-  `dataset.getType`→`groups`→`categories`; the SDE only bundles **fittable** types so
-  celestials/deployables fall into "Others", but ship classes resolve perfectly + the
-  system is inferred from celestial names), and the share helpers `sharePilotIntel()` /
-  `shareDScan()` that POST to capsuleers.app (`/api/pilot-intel/shares/from-scan`,
-  `/api/scans/from-dscan`) and return a 24h link.
-- [`intel-history.mjs`](desktop/src/intel-history.mjs) — disk-persisted history of generated
-  share links (`{userData}/intel-share-history.json`), `kind: 'intel'|'dscan'`, pruned past
-  the 24h expiry on read. Surfaced in the header "Storico" modal with a live countdown.
-- [`esi.mjs`](desktop/src/esi.mjs) — official ESI (corp summary, character affiliation, system activity).
-- [`eve-scout.mjs`](desktop/src/eve-scout.mjs) — Thera/Turnur wormhole connections.
-- [`eveworkbench.mjs`](desktop/src/eveworkbench.mjs) — EVE Workbench community-fit **search by need**
-  ("voglio un fit PvP per la Vagabond"). `maybeWorkbench()` is a stateful two-step intent (NOT MCP;
-  the engine runs it only when no MCP intent fired, folding the result into `mcp`): a SEARCH
-  (`POST /Fit/PostSearchFits`) returns a `fitlist` card + remembers the results in module-scope
-  `lastFitSearch`; a follow-up ("specifiche del #2") resolves a fit, pulls its full EFT via
-  `GET /Fit/GetById` (`detailToEft` rebuilds slots + drones), and computes Pyfa-parity stats with
-  `describeDoctrineFit` (`theory:true` + the EFT block). Headless (UA + origin only, no auth). A fit
-  search and a doctrine search cross-clear each other (`resetFitMemory`/`resetDoctrineMemory`) so the
-  "specs #N" follow-up always targets the most recent context.
-- [`mcp.mjs`](desktop/src/mcp.mjs) + [`mcp-intel.mjs`](desktop/src/mcp-intel.mjs) — eve-kill **MCP**
-  analytics (dossier, flies-with/hunts/preys/hunted, safe routes, battles, meta/doctrines, killmail
-  forensics, entity overview/timeline/kills, ships-used, entity-top rankings, global/system pulse).
-  Deliberately NOT wired: `me_*` (no pilot context), `item/ship/system_info` (answered offline),
-  fitting (`dogma_eval`/`fit_compare`/`ship_compare`), `kills_with`≈`flies_with`, `compare`≈`war_report`.
-  - **Doctrine specs (two-turn flow).** A `doctrine_detect` answer ("which doctrines does corp/alliance
-    X use") caches its clusters in module-scope `lastDoctrine` (`{ entity, clusters[] }`). A follow-up
-    like *"specifiche della Muninn"* / *"il fitting della Muninn"* / *"specs #2"* / *"a quanto spara la
-    Crusader"* resolves the
-    cluster (by ordinal or ship name via `resolveCluster`), pulls its example killmail's EFT
-    (`killmail_fitting` `format:"eft"`), and computes the fit stats locally via `describeDoctrineFit`
-    (max/min damage). The returned block carries `theory:true`, which triggers a theorycrafting
-    directive in [`engine.mjs`](desktop/src/engine.mjs). `resetConversation()` clears `lastDoctrine`
-    via the exported `resetDoctrineMemory()`. The specs intent (#5-bis) is gated on `lastDoctrine`
-    and must precede the doctrine-list intent (#5).
-- [`clipboard-watch.mjs`](desktop/src/clipboard-watch.mjs) — opt-in clipboard watcher.
-  `detectClipboard()` discriminates a **Local roster** (`isLocalList`) from a **D-Scan**
-  (`isDScan` — ≥4 tab cols, numeric typeID col0, distance-like last col), returning a
-  discriminated `{ kind: 'local'|'dscan', … }` payload. Ignores content already present
-  when enabled (so re-copying the same scan is a no-op). **Reads via `wl-paste` on Wayland**
-  (`readClipboardText()`, gated on `process.platform === 'linux' && WAYLAND_DISPLAY`): Electron's
-  `clipboard.readText()` only returns fresh content while the window is focused on Wayland, so a
-  scan copied with the app in the background would go unseen — `wl-paste -n` (wl-clipboard, via
-  `execFileSync`) reads through the data-control protocol regardless of focus. Falls back to
-  `clipboard.readText()` everywhere else, and permanently after a `wl-paste` `ENOENT` (wl-clipboard
-  not installed).
-- [`links.mjs`](desktop/src/links.mjs) — `linkify` + `detectLang`.
-
-**Outbound User-Agent** — every external request (in both halves) must identify the app via a single
-constant. JS: [`desktop/src/user-agent.mjs`](desktop/src/user-agent.mjs) exports `USER_AGENT`
-(version read from `package.json` via `createRequire`); Python: `USER_AGENT` in
-[`config.py`](ingestion/capsuleers_ingestion/config.py). Both render
-`Capsuleers.IA/<version> (+https://capsuleers.app; info@capsuleers.app)` (CCP `App/version (+url; contact)`
-format). Don't hardcode a UA string at a call site — import the constant; change contact/version in those
-two files only.
-- [`main.mjs`](desktop/src/main.mjs) — Electron main process, tray/mini window, electron-updater
-  auto-update, `refreshDataFiles()` (re-downloads index/data files whose size no longer matches
-  the effective manifest) + `checkIndexUpdateInBackground()` (post-boot: if a newer **compatible**
-  RAG index is published, downloads it + offers a restart). `setupInfo()` returns a `dataOnly` flag
-  (a catalog chat model is already installed and only the base assets — index/embedding — are
-  missing): the renderer's `#setup` overlay then switches to a **data-update** presentation (distinct
-  title/intro, no model picker, size shown in MB, "Aggiorna e avvia") instead of the full first-run
-  model picker. Same download/cancel/resume machinery for both modes. Also hosts the **RAG index
-  panel** handlers (`rag:info` / `rag:redownload` / `rag:redownload-cancel` + `app:relaunch`): the
-  toolbar **RAG** button opens a panel showing the installed index version / embedder / dim / total
-  size / per-file list, flags when a newer **compatible** index is published, and offers a **forced
-  full re-download** with live progress + cancel followed by a "restart to apply". The forced path
-  uses `downloadFile`'s `force` flag — bypasses the idempotent size-match skip while keeping the old
-  file until the new one is verified and atomically renamed over it, so a cancel never breaks a
-  working index; the handlers resolve the data dir via the engine (`assetPaths`) so it works in BOTH
-  dev and packaged builds. `data:wipe-all` clears all downloaded models + RAG index + caches.
-  **Both `models:catalog` and `models:download` resolve `modelsDir` via `assetPaths()`** (not the
-  `assetDirs` guard) so the model catalog + on-demand downloads work in dev too, not only packaged.
-- **RAG index auto-update**: [`assets.mjs`](desktop/src/assets.mjs) fetches the index manifest at
-  runtime (`INDEX_MANIFEST_URL`, raw `assets-manifest.json` on `main`) like the model catalog. A
-  newer `index.version` with matching `embedModel`/`dim` is downloaded + persisted to
-  `dataDir/index-manifest.json` (the new baseline; bundled manifest is the offline floor). The
-  server side that republishes the index is [`ops/publish-index.sh`](ops/publish-index.sh); the
-  daily wiki/SDE jobs keep Qdrant fresh. See [`RELEASING.md`](RELEASING.md).
-
-## Fit analysis (delegated to `eve-fit-engine`)
-
-[`desktop/src/fit.mjs`](desktop/src/fit.mjs) computes fit stats by delegating **all** the math to
-the [`eve-fit-engine`](https://www.npmjs.com/package/eve-fit-engine) npm package (the same
-Pyfa-parity engine extracted from Capsuleers.Site — 631 assertions / 23 fixtures). The engine
-ships its **own version-pinned SDE bundle**, so the numbers are **authoritative, offline and
-Pyfa-parity**; nothing is sent to a server.
-
-What `fit.mjs` still owns:
-- `looksLikeFit(text)` — detect a pasted EFT block (first line `[Ship, Name]`).
-- `parseEft(text)` — extract ship + module/charge **names verbatim** (for the price lookup and the
-  module listing shown to the LLM; the engine's `Fit` carries only typeIDs).
-- `describeFit(fit, eftText)` — re-parse the raw EFT through the engine and render the computed
-  `DerivedStats` into the Italian context block (fitting resources, slots/hardpoints, DPS with
-  weapon/drone/fighter split + alpha + sustained, weapon ranges, EHP + per-layer resistances,
-  active/passive tank, cap stability, navigation, targeting).
-- `describeDoctrineFit(eft)` — doctrine-fit variant used by the **doctrine specs** flow (see the
-  MCP section). Same authoritative tank/cap/nav/targeting block, but contrasts the offense at the
-  **highest-damage** vs the **longest-range** ammo (the "max/min" damage spread the user asked for).
-  Killmail loss fits usually have no ammo, so `pickAmmoExtremes()` injects the two extreme charges:
-  exact charge-size match; turret long-range = lowest-damage ammo; **missile long-range = genuinely
-  longest flight range** (`maxVelocity × flightTime`, ranked on base attrs since the ship/skill/rig
-  multipliers preserve the ordering). Missile flight range is surfaced via the engine's
-  `offense.missileRange` (added in eve-fit-engine 0.1.4).
-- `warmFitEngine()` — called once from `engine.init()` to preload the ~8 MB bundled SDE so the
-  first pasted fit doesn't stall. Fire-and-forget; loads lazily on demand if it didn't run.
-
-Imports from `eve-fit-engine/node`: `loadBundledDataset`, `buildAllVSkillProfile`, `computeFit`,
-`parseEft`, `defaultStateForModule`, `moduleAcceptsChargeType`, `isTurretWeapon`, `isMissileLauncher`.
-
-### Fit traps
-
-- **`eve-fit-engine/data/**` MUST be `asarUnpack`'d** ([`desktop/electron-builder.yml`](desktop/electron-builder.yml)) —
-  the package's `/node` loader reads its bundled SDE (`manifest.json` + `v<hash>/*.json`) from disk
-  via `fs`, which fails inside `app.asar`.
-- **Promote modules to their natural state on import** — `defaultStateForModule(type, dataset.effects)`,
-  exactly as the editor does on EFT import. Otherwise weapons/props sit `ONLINE` and contribute 0 DPS.
-- **Drones must be launched explicitly** — EFT lists the drone *bay*; the engine's OFFENSE only counts
-  drones with `countActive > 0`. `launchDrones()` deploys greedily in EFT order, capped by ship drone
-  bandwidth + the All-V 5-drone limit, and sets `countActive` so headline DPS matches Pyfa.
-- **Removed in the eve-fit-engine migration** (don't reintroduce): the old custom All-V estimator,
-  the Python `sde/fitlookup.py` → `fit_lookup.json` artifact, and the opt-in `precise`/`preciso`/`dogma`
-  keyword that ran a remote eve-kill `dogma_eval`. Stats are now always authoritative + offline.
-  `dogmaEval()` still exists in [`mcp-intel.mjs`](desktop/src/mcp-intel.mjs) but is no longer wired into
-  `ask()`.
-
-## Data / asset model
-
-- [`desktop/src/assets-manifest.json`](desktop/src/assets-manifest.json) declares the release-artifact
-  files (`index.vec`, `index.meta.jsonl`, `names_index.json`) with size + sha256. On first launch the
-  app downloads them (plus the embedding model + a chat model) into userData. `refreshDataFiles()`
-  re-downloads any file whose size drifts from the manifest, so installs pick up new data without a
-  reinstall — the big vector index is untouched when unchanged.
-- The index is released separately on GitHub Releases (tag `index-<version>`); the installer is "lite"
-  (code only). See [`RELEASING.md`](RELEASING.md).
-
-## Ingestion (Python data factory)
-
-[`ingestion/capsuleers_ingestion/`](ingestion/capsuleers_ingestion/): `run.py` (CLI), `update.py`
-(daily SDE build-number check + zero-downtime Qdrant alias swap), plus four **incremental**
-auto-updaters that re-index changed docs **in place** on the live collection (NOT via update.py's
-SDE-only swap, which would drop wiki/missions):
-- `wiki_update.py` — `recentchanges` API watermark (per-source: `wiki_state.json` for EVE Uni, `wiki_state_<key>.json` for the others) → re-index changed pages across every wiki in [`wiki/sources.py`](ingestion/capsuleers_ingestion/wiki/sources.py) (EVE University + EVE Sister Core Scanner Probe Fandom wiki).
-- `missions_update.py` — content-hash diff (`missions_state.json`) for eve-survival (Wikka wiki,
-  no API) → re-index changed / drop removed.
-- `wormhole_update.py` — `wormhole.json` file-hash (`wormhole_state.json`) → re-index only the
-  affected J-space system Documents (new ∪ previous key-set, so removed effects get cleared).
-- `ccp_update.py` — the CCP first-party sources (**L1**), four PROVIDERS in
-  [`ccp/`](ingestion/capsuleers_ingestion/ccp/): `news` (patch notes + dev blogs since 2019, from
-  eveonline.com's Contentful archive via the public CDA token the site ships to every browser),
-  `support` (support.eveonline.com, Zendesk Help Center API, ~310 articles, bodies in the listing),
-  `academy` (EVE Academy pages, same Contentful space) and `devdocs` (only `docs/guides/**` of
-  `esi/esi-docs` — formulae, security rounding, fitting formats, PI, SKINR; not the ESI/SSO docs).
-  The same registry also holds `articles` ([`capsuleers_app/articles.py`](ingestion/capsuleers_ingestion/capsuleers_app/articles.py)):
-  capsuleers.app's community articles from the site's public `/api/articles` (bodies + `updated_at`
-  in the listing), EN and IT both indexed with their localised URLs, `source=capsuleers_articles`
-  → **L3, dated** (no retrieval nudge) like CCP news. Being in the registry is what makes
-  `ccp_update` / `run --ccp` — and so `rag-check`/`rag-publish` — pick it up with no extra wiring;
-  the tier comes from `source`, not from the registry.
-  Each provider LISTS items with a version stamp and no body (Contentful `sys.publishedAt`, Zendesk
-  `updated_at`, git blob sha), so `--check` is a handful of requests and only changed items are
-  fetched. `ccp_state.json` keeps the Document ids PER ITEM, because an item becomes many Documents
-  and their count changes as it grows (patch notes are edited at every hotfix). After a full rebuild,
-  `--seed-from-dump` rebuilds that state from the dump (each Document carries `ccp_provider`,
-  `ccp_item`, `ccp_stamp`). Offline tests: `ingestion/tests/test_ccp.py`.
-  **Every item is cut at its h2/h3 into ~700-char Documents** (`PIECE` in `ccp/common.py`), title =
-  item (+ DATE for news) + section path without repeated segments, no header line. Measured, not tuned
-  by eye: a patch-note section is a list of unrelated changes, and on the 19.11 "Ecosystem" section
-  the query "when were ore quantities in asteroid belts doubled?" scored cosine 0.38 on a 1 360-char
-  block with header, 0.63 on 300 chars. With the index + all 7 480 CCP chunks, 7 of 9 targeted test
-  questions put the right CCP chunk in top-12 (the other two at 13 and 16).
-  A blockquote heading ("> ## Developer Comment:") is a line, not a section — promoted, it
-  replaced the real path on every section after it. **EVE Academy URLs are discovered, not derived**:
-  the site answers 200 to any /eve-academy path (a ~37 KB not-found shell), so each page probes a few
-  candidates and accepts only a real render; 21 of 76 pages have a URL, the rest (ship primers,
-  activity cards) are cited with the Academy home.
-All four purge a doc's old chunks via `index.delete_by_doc_ids` before re-insert.
-**An SDE bump forces a FULL rebuild (~25 min, wiki + missions re-crawled), and one failed
-wiki fetch aborts all of it.** `wiki/api.py::api_get` retries 6× with 1-2-4-8-16 s backoff
-(~1.5 min window). It was 3× over ~3 s until 2026-09-23, when a single EVE Uni blip
-(`titles=Oracle`) killed the rebuild for SDE 3528119 and the published index stayed on 3503375
-while `rag-check` kept reporting the new build as "seen". After an SDE bump, check that an
-`index-<date>` release actually shipped — a green `rag-check` only means it was *detected*.
-`sde/*` (per-domain parsers: `parse`, `dogma`, `universe`, `industry`, `social`, `facilities`,
-`sites`, `wormholes`), `wiki/` (`api` shared client, `scrape` full+per-title crawler,
-`recentchanges` detector; rate-limited, CC-BY-SA), `missions/eve_survival.py` (full + per-name
-`scrape_named`), `chunk.py`, `embed.py` (Ollama bge-m3), `index.py` (Qdrant). Embedding cache
-(`embed_cache.sqlite`) means any update only re-embeds changed documents. Timers + the index
-publish step live in [`ops/`](ops/) (`update.sh`, `wiki-update.sh`, `missions-update.sh`,
-`wormhole-update.sh`, `publish-index.sh`).
-
-## Data sources & licensing
-
-Official SDE (authoritative), capsuleers.app community articles (the project's own site), EVE University Wiki (**CC BY-NC-SA 4.0** → the knowledge index is
-effectively **non-commercial**), EVE Sister Core Scanner Probe Fandom wiki (CC BY-SA, German — exploration
-sites), EVE Wiki on Fandom (CC BY-SA, EN), Riley Entertainment guides (no explicit licence — opt-in
-`--riley`, never in `--all`), eve-survival (missions), Anoikis (wormhole effects/statics), EVE Ref
-(prices), ESI, eve-kill (killboard + MCP), EVE-Scout. Source code is MIT; GGUF models keep their own
-licenses and are not redistributed. See [`THIRD_PARTY.md`](THIRD_PARTY.md). Unofficial, non-commercial
-fan project — not affiliated with Fenris Creations.
-
-## Security hardening (renderer + packaging)
-
-Hardened 2026-06-29 — full write-up in [`docs/security-review-2026-06-29.md`](docs/security-review-2026-06-29.md). **Invariants — don't regress:**
-
-- **Renderer is sandboxed + isolated.** `webPreferences` sets `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` **explicitly** (already the Electron 42 defaults — explicit so a future default change can't silently weaken them). No `<webview>`, no `enableRemoteModule`. A renderer XSS therefore cannot reach Node/native code — only the narrow `preload.cjs` bridge.
-- **`esc()` must stay quote-safe.** It encodes `& < > " '`. The `"`/`'` encoding is load-bearing: `esc()`'d values land inside double-quoted attributes (`title="…"`, and the model-answer markdown links built by `mdToHtml`), so dropping the quote escapes reintroduces an **attribute-breakout XSS** (the local model echoes a crafted URL → injected `onmouseover`). The link regexes in `inline()` also exclude `"` from the URL char class as defence in depth.
-- **CSP `<meta>` in `renderer/index.html`.** `connect-src 'self'` contains exfiltration (the renderer makes **no** direct network calls — all egress is via IPC → main); `img-src` is pinned to `images.evetech.net`. If you add a renderer-side fetch or a new image CDN, widen **only** the matching directive.
-- **Electron fuses** are flipped at pack time via `electronFuses:` in `electron-builder.yml` (inherited by the per-GPU variant configs through `extends`): `runAsNode` / `enableNodeOptionsEnvironmentVariable` / `enableNodeCliInspectArguments` off, `onlyLoadAppFromAsar` on. `enableEmbeddedAsarIntegrityValidation` is deliberately **off** pending a tested Windows build — flip + verify a Windows install before enabling.
-- **Destructive bridge actions need a main-side gate.** `data:wipe-all` shows a main-process confirmation `dialog` before wiping (the renderer prompt is advisory). Backed by `wipe*` keys in `MSTR` (it/en).
-- **Model-file handlers reject path traversal.** Both `deleteModelFile` and `setModel` require a bare `*.gguf` basename (`^[^/\\]+\.gguf$`) before `path.join(MODELS_DIR, …)`. Keep the guard on any new handler that joins a bridge-supplied filename.
-- **No hidden egress.** Generation is 100% local; intel lookups (capsuleers.app, ESI, eve-kill as fallback and for the MCP analytics) are consented — the consent text in `main.mjs` names all three. Don't add telemetry.
-
-## Notes
-
-- [`docs/architecture.md`](docs/architecture.md) describes an **earlier** design (Fastify API +
-  Ollama serving + Qdrant at query-time). The shipped product is now a self-contained Electron app with
-  `node-llama-cpp` + an in-RAM index and no runtime server — treat the runtime sections of that doc as
-  historical; this file + [`README.md`](README.md) are the current source of truth.
-
-## Icone e marchio
-
-Le icone dell'app (`desktop/assets/icon-{32,64,256}.png`, `tray.png`,
-`desktop/build/icon.png` e `icon.ico`) e `docs/brand/emblem*.svg` vengono dal
-generatore del sito — `npm run brand:icons -- <cartella>` in capsuleers.website
-(`scripts/brand/`), che rende l'emblema Capsuleers con il suffisso
-`.IA`. Non ritoccarle a mano e non generarle da qui: si rifanno li' e si
-copiano. Fino a 64 px (tray, icon-32/64, le taglie piccole dell'`.ico`) si usa
-la variante **mark** — la sola gemma con tutte le linee, in `#fb923c`, senza
-disco ne' anello: con quelli a 32 px era una macchia;
-icon-256, icon.png e le taglie 128/256 dell'`.ico` sono l'emblema pieno.
-
-## Delegating to subagents
-
-When delegating work to subagents, pick the model and the `effort` level based on
-how hard the task is:
-
-- **Simple tasks → `model: "sonnet"`**, with `effort` `low` or `medium`: searching or
-  reading code, mechanical edits, renames, regenerating generated code, running
-  typecheck or tests and reporting the result.
-- **Complex tasks → `model: "opus"`**, with `effort` set to match the difficulty:
-  `high` for non-trivial implementation or debugging, `xhigh`/`max` for changes that
-  touch other repos or shared contracts (shared Postgres schema, `jobs` payloads),
-  data migrations, or tricky bugs with no obvious cause.
-
-When in doubt, start at the lower level and escalate only if the result isn't good
-enough.
+## Aree (leggi solo se il task le tocca)
+| area | file | leggi se |
+|---|---|---|
+| runtime desktop | docs/claude/desktop-runtime.md | tocchi engine, retrieval, tier fonti, prezzi, prompt, modelli, eval |
+| live-data | docs/claude/live-data.md | tocchi moduli che chiamano servizi esterni, clipboard, main.mjs, auto-update |
+| fit | docs/claude/fit.md | tocchi `fit.mjs` o doctrine specs |
+| ingestion | docs/claude/ingestion.md | tocchi `ingestion/`, `ops/`, manifest asset, fonti e licenze |
+| sicurezza | docs/claude/security.md | tocchi renderer, preload, CSP, fuses, IPC, rete |
+| storico | docs/architecture.md | solo per la storia: design precedente, NON il runtime attuale |
+| rapporti tra repo | ../docs/claude/cross-repo.md | tocchi API v1, `/api/articles`, eve-fit-engine |
+| marchio | ../docs/claude/brand.md | tocchi icone o `docs/brand/` |
