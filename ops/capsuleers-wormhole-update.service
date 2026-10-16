@@ -5,5 +5,5 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/Documenti/WORK/Capsuleers.IA/ops/wormhole-update.sh
+ExecStart=%h/Documenti/WORK/CAPSULEERS/capsuleers.ia/ops/wormhole-update.sh
 TimeoutStartSec=1800

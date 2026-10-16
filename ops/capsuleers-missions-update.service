@@ -5,6 +5,6 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/Documenti/WORK/Capsuleers.IA/ops/missions-update.sh
+ExecStart=%h/Documenti/WORK/CAPSULEERS/capsuleers.ia/ops/missions-update.sh
 # Full re-fetch of the mission set (content-hash diff); re-embeds only changed pages.
 TimeoutStartSec=3600

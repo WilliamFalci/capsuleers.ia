@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 # Change the path if the repo is elsewhere.
-ExecStart=%h/Documenti/WORK/Capsuleers.IA/ops/wiki-update.sh
+ExecStart=%h/Documenti/WORK/CAPSULEERS/capsuleers.ia/ops/wiki-update.sh
 # Incremental: re-embeds only the changed pages (embed cache dedupes the rest),
 # so this is fast — but keep a generous cap for a busy week of wiki edits.
 TimeoutStartSec=3600

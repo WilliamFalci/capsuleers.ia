@@ -41,7 +41,8 @@ systemctl --user list-timers | grep capsuleers   # next run
 journalctl --user -u capsuleers-sde-update.service -f   # logs
 ```
 
-> The `.service` assumes the repo is at `~/Documenti/WORK/Capsuleers.IA`. Edit
+> Every `.service` assumes the repo is at `~/Documenti/WORK/CAPSULEERS/capsuleers.ia`
+> (`ExecStart=%h/Documenti/WORK/CAPSULEERS/capsuleers.ia/ops/...`). Edit
 > `ExecStart` if it's elsewhere. The Python dependencies must be available
 > (a venv in `ingestion/.venv` is recommended, automatically detected by `update.sh`).
 
@@ -49,7 +50,7 @@ journalctl --user -u capsuleers-sde-update.service -f   # logs
 
 ```cron
 # m h  dom mon dow  command
-0 11 * * *  /path/Capsuleers.IA/ops/update.sh >> ~/capsuleers-sde-update.log 2>&1
+0 11 * * *  /path/capsuleers.ia/ops/update.sh >> ~/capsuleers-sde-update.log 2>&1
 ```
 
 ## Notes
