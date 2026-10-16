@@ -28,5 +28,8 @@
   "devDependencies": {
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "simple-git": "^4.0.2"
   }
 }
