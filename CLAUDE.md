@@ -380,3 +380,19 @@ copiano. Fino a 64 px (tray, icon-32/64, le taglie piccole dell'`.ico`) si usa
 la variante **mark** — la sola gemma con tutte le linee, in `#fb923c`, senza
 disco ne' anello: con quelli a 32 px era una macchia;
 icon-256, icon.png e le taglie 128/256 dell'`.ico` sono l'emblema pieno.
+
+## Delegating to subagents
+
+When delegating work to subagents, pick the model and the `effort` level based on
+how hard the task is:
+
+- **Simple tasks → `model: "sonnet"`**, with `effort` `low` or `medium`: searching or
+  reading code, mechanical edits, renames, regenerating generated code, running
+  typecheck or tests and reporting the result.
+- **Complex tasks → `model: "opus"`**, with `effort` set to match the difficulty:
+  `high` for non-trivial implementation or debugging, `xhigh`/`max` for changes that
+  touch other repos or shared contracts (shared Postgres schema, `jobs` payloads),
+  data migrations, or tricky bugs with no obvious cause.
+
+When in doubt, start at the lower level and escalate only if the result isn't good
+enough.
