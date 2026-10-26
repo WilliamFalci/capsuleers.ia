@@ -21,13 +21,13 @@
     "dist:win:vulkan": "electron-builder --win --config electron-builder.win-vulkan.yml --publish never"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9",
+    "electron-updater": "^6.8.11",
     "eve-fit-engine": "^0.2.13",
     "node-llama-cpp": "^3.22.2"
   },
   "devDependencies": {
     "electron": "^44.9.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.18.0"
   },
   "overrides": {
     "simple-git": "^4.0.2"
