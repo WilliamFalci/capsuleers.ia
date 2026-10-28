@@ -38,7 +38,7 @@ appImage:
 # platform suffix, so the two CUDA variants coexist in the same release.)
 publish:
   provider: github
-  owner: WilliamFalci
+  owner: capsuleers-app
   repo: capsuleers.ia
   releaseType: release
   channel: latest-cuda

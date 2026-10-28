@@ -14,14 +14,14 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // Remote model catalog (edit this file on the repo → users see new models on next
 // launch, no app update). The bundled copy is the offline fallback.
-const CATALOG_URL = "https://raw.githubusercontent.com/WilliamFalci/capsuleers.ia/main/desktop/src/models-catalog.json";
+const CATALOG_URL = "https://raw.githubusercontent.com/capsuleers-app/capsuleers.ia/main/desktop/src/models-catalog.json";
 
 // Remote index manifest (same file as the bundled one, served from the repo). The
 // ingestion host bumps index.version + files when it republishes the RAG index
 // (ops/publish-index.sh) → existing installs auto-update the data, no app release.
 // The bundled copy is the offline floor; a persisted copy in dataDir is the
 // source of truth once an update has been applied.
-const INDEX_MANIFEST_URL = "https://raw.githubusercontent.com/WilliamFalci/capsuleers.ia/main/desktop/src/assets-manifest.json";
+const INDEX_MANIFEST_URL = "https://raw.githubusercontent.com/capsuleers-app/capsuleers.ia/main/desktop/src/assets-manifest.json";
 const PERSISTED_INDEX_MANIFEST = "index-manifest.json";  // in dataDir
 
 /** Load the bundled index + embedding manifest (shipped next to this module). */

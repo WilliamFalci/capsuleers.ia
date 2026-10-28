@@ -17,7 +17,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-OWNER_REPO="WilliamFalci/capsuleers.ia"
+OWNER_REPO="capsuleers-app/capsuleers.ia"
 VERSION="${INDEX_VERSION:-$(date -u +%Y.%m.%d)}"
 TAG="index-${VERSION}"
 BASE_URL="https://github.com/${OWNER_REPO}/releases/download/${TAG}"

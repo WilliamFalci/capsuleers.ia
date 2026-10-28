@@ -42,7 +42,7 @@ nsis:
 # and no cross-variant updates (a CUDA install never pulls the Vulkan artifact).
 publish:
   provider: github
-  owner: WilliamFalci
+  owner: capsuleers-app
   repo: capsuleers.ia
   releaseType: release
   channel: latest-cuda

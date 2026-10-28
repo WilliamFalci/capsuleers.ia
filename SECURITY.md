@@ -25,7 +25,7 @@ update before reporting. Older AppImages / installers are not patched.
 Report privately, by either channel:
 
 1. **GitHub Security Advisories (preferred):** open a private report at
-   <https://github.com/WilliamFalci/capsuleers.ia/security/advisories/new>.
+   <https://github.com/capsuleers-app/capsuleers.ia/security/advisories/new>.
 2. **Email:** <info@capsuleers.app> — put `SECURITY` in the subject. Encrypt with a
    PGP key on request if the finding is sensitive.
 

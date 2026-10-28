@@ -5,7 +5,7 @@
     "version": "2026.10.28",
     "embedModel": "bge-m3",
     "dim": 1024,
-    "baseUrl": "https://github.com/WilliamFalci/capsuleers.ia/releases/download/index-2026.10.28",
+    "baseUrl": "https://github.com/capsuleers-app/capsuleers.ia/releases/download/index-2026.10.28",
     "files": [
       {
         "name": "index.vec",

@@ -54,7 +54,7 @@ the Python/Docker stack.
 This is the most common contribution path.
 
 ```bash
-git clone git@github.com:WilliamFalci/capsuleers.ia.git
+git clone git@github.com:capsuleers-app/capsuleers.ia.git
 cd capsuleers.ia/desktop
 npm install            # node-llama-cpp's postinstall pulls the GPU native binaries
 ```
