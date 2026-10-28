@@ -13,9 +13,14 @@
 ;    assisted (oneClick: false), so this customUnInstall macro is the supported way.
 ;  - electron-builder auto-includes build/installer.nsh (the default `nsis.include`),
 ;    so no config change is needed.
+;  - electron-builder runs the PREVIOUS uninstaller during every update (silent, with
+;    --updated). Without the ${isUpdated} guard each auto-update would wipe the user
+;    data too, so the RMDir calls only run on a real uninstall.
 !macro customUnInstall
-  ; userData: downloaded models + RAG index + Electron caches + settings.
-  RMDir /r "$APPDATA\capsuleers-ia-desktop"
-  ; electron-updater download cache (updaterCacheDirName = capsuleers-ia-desktop-updater).
-  RMDir /r "$LOCALAPPDATA\capsuleers-ia-desktop-updater"
+  ${ifNot} ${isUpdated}
+    ; userData: downloaded models + RAG index + Electron caches + settings.
+    RMDir /r "$APPDATA\capsuleers-ia-desktop"
+    ; electron-updater download cache (updaterCacheDirName = capsuleers-ia-desktop-updater).
+    RMDir /r "$LOCALAPPDATA\capsuleers-ia-desktop-updater"
+  ${endIf}
 !macroend
